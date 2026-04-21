@@ -26,7 +26,13 @@ public class SecurityConfig {
                 .authorizeHttpRequests(auth -> auth
                         // ⚠️ 核心配置：开启“白名单”
                         // 放行登录接口、获取列表接口，以及所有的物理图片访问路径
-                        .requestMatchers("/api/users/login", "/api/photos/list", "/uploads/**","/api/photos/upload").permitAll()
+                        .requestMatchers("/api/users/login",
+                                "/api/photos/list",
+                                "/uploads/**",
+                                "/api/photos/upload",
+                                "/v3/api-docs/**",
+                                "/swagger-ui/**",
+                                "/swagger-ui.html").permitAll()
 
                         // 其他任何请求（比如 /api/photos/upload）都必须经过认证才能访问
                         .anyRequest().authenticated()
