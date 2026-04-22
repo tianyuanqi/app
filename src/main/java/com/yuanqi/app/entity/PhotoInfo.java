@@ -16,6 +16,10 @@ public class PhotoInfo {
     @TableId(type = IdType.AUTO) // 标识这是主键，且为自增
     private Long id;
 
+    // 👇 新增：绑定用户的核心字段！记录是谁上传了这张照片
+    @Schema(description = "上传者的真实内部 ID")
+    private Long userId;
+
     @Schema(description = "照片标题")
     private String title;
 

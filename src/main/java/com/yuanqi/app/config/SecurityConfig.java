@@ -2,6 +2,7 @@ package com.yuanqi.app.config;
 
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.http.HttpMethod;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.web.SecurityFilterChain;
@@ -24,10 +25,15 @@ public class SecurityConfig {
 
                 // 2. 配置请求拦截规则
                 .authorizeHttpRequests(auth -> auth
+
+                        // 全局放行所有的 OPTIONS 预检请求，解决复杂请求的跨域拦截
+                        .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
+
                         // ⚠️ 核心配置：开启“白名单”
                         // 放行登录接口、获取列表接口，以及所有的物理图片访问路径
                         .requestMatchers("/api/users/login",
                                 "/api/photos/list",
+                                "/api/photos/my-list",
                                 "/uploads/**",
                                 "/api/photos/upload",
                                 "/v3/api-docs/**",

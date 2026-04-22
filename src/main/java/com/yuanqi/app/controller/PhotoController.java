@@ -1,11 +1,14 @@
 package com.yuanqi.app.controller; // 替换为您的包名
 
+import com.yuanqi.app.common.JwtUtils;
 import com.yuanqi.app.common.Result;
+import com.yuanqi.app.common.UserContext;
 import com.yuanqi.app.entity.PhotoInfo;
 import com.yuanqi.app.service.PhotoService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.*;
@@ -32,6 +35,15 @@ public class PhotoController {
     }
 
 
+    @Operation(summary = "获取用户照片列表", description = "查询数据库中指定用户的所有照片")
+    @GetMapping("/my-list")
+    public  Result<List<PhotoInfo>> getMyPhotoList(){
+        Long userId = UserContext.getUserId();
+        return Result.success(photoService.getMyphotoList(userId));
+    }
+
+
+
     /*
         Swagger 会默认把所有的post请求参数识别为application/json,但对于需要上传实体文件的请求来说，这样的描述并不准确
         所以需要明确的指定请求格式（Consumes）
@@ -47,7 +59,9 @@ public class PhotoController {
         @Parameter(description = "照片标题")  @RequestParam("title") String title,
         @Parameter(description = "相机型号")  @RequestParam("cameraBody") String cameraBody) throws Exception {
 
-        String path = photoService.uploadPhoto(file, title, cameraBody);
+        Long userId = UserContext.getUserId();
+
+        String path = photoService.uploadPhoto(file, title, cameraBody, userId);
 
         // 2. 使用 Result.success() 将返回信息包裹起来
         return Result.success("文件上传成功，真实路径为:" + path);

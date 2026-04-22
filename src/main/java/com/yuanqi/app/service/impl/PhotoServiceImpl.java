@@ -13,6 +13,7 @@ import org.springframework.web.multipart.MultipartFile;
 
 import java.io.File;
 import java.util.List;
+import java.util.Map;
 
 @Service
 public class PhotoServiceImpl implements PhotoService {
@@ -21,7 +22,7 @@ public class PhotoServiceImpl implements PhotoService {
     private PhotoInfoMapper photoInfoMapper; // 注入 Mapper 依赖
 
     @Override
-    public String uploadPhoto(MultipartFile file, String title, String cameraBody) throws Exception {
+    public String uploadPhoto(MultipartFile file, String title, String cameraBody,Long userId) throws Exception {
         if (file.isEmpty()){
             throw new IllegalArgumentException("文件不能为空");
         }
@@ -40,6 +41,8 @@ public class PhotoServiceImpl implements PhotoService {
         photo.setCameraBody(cameraBody);
         photo.setImageUrl("/uploads/" + fileName); // 存入相对路径，方便后续前端展示
 
+        //将解析出来的userId和照片绑定
+        photo.setUserId(userId);
         photoInfoMapper.insert(photo);
 
         return dest.getAbsolutePath();
@@ -48,6 +51,20 @@ public class PhotoServiceImpl implements PhotoService {
     @Override
     public List<PhotoInfo> getPhotoList() {
         return photoInfoMapper.selectList(null);
+    }
+
+    @Override
+    public List<PhotoInfo> getMyphotoList(Long userId) {
+
+        // 1. 创建一个“条件构造器”（相当于在帮你写 WHERE 语句）
+        LambdaQueryWrapper<PhotoInfo> wrapper = new LambdaQueryWrapper<>();
+
+        // 2. 拼接条件：WHERE user_id = 传进来的 userId
+        // PhotoInfo::getUserId 是 Java8 的方法引用，MyBatis-Plus 会自动把它翻译成数据库里的 user_id 列名
+        wrapper.eq(PhotoInfo::getUserId, userId);
+
+        // 3. 把组装好的条件扔给 selectList 方法
+        return photoInfoMapper.selectList(wrapper);
     }
 
 }

@@ -16,6 +16,9 @@ public class User {
 //    @TableId(type = IdType.ASSIGN_ID)
     private Long id;
 
+    // 对外展示的业务 ID（也就是你说的类似QQ号的东西，给前端用的）
+    private String uid;
+
     //对外展示的用户id
 //    private String userid;
     private String username;
