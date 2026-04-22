@@ -6,6 +6,7 @@ import com.baomidou.mybatisplus.annotation.TableName;
 import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.Data;
 import java.time.LocalDateTime;
+import java.util.Date;
 
 @Data // Lombok 注解，自动生成 Getter/Setter，保持代码整洁
 @Schema(description = "照片详细信息实体")
@@ -49,4 +50,7 @@ public class PhotoInfo {
 
     @Schema(description = "创建时间")
     private LocalDateTime createTime;
+
+    @Schema(description = "拍摄时间")
+    private LocalDateTime shoot_date;
 }

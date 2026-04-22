@@ -10,7 +10,7 @@ import java.util.List;
 @Service
 public interface PhotoService {
 
-    String uploadPhoto(MultipartFile file,String title,String cameraBody,Long userId) throws Exception;
+    String uploadPhoto(MultipartFile file,String title,Long userId) throws Exception;
 
     List<PhotoInfo> getPhotoList();
 

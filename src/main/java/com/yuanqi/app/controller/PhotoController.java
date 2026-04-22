@@ -56,12 +56,11 @@ public class PhotoController {
     public Result<String> uploadPhoto(
             // 👇 核心修改2：用 @Parameter 描述每一个表单字段，方便生成swagger文件
         @Parameter(description = "要上传的文件")  @RequestParam("file") MultipartFile file ,
-        @Parameter(description = "照片标题")  @RequestParam("title") String title,
-        @Parameter(description = "相机型号")  @RequestParam("cameraBody") String cameraBody) throws Exception {
+        @Parameter(description = "照片标题")  @RequestParam("title") String title) throws Exception {
 
         Long userId = UserContext.getUserId();
 
-        String path = photoService.uploadPhoto(file, title, cameraBody, userId);
+        String path = photoService.uploadPhoto(file, title, userId);
 
         // 2. 使用 Result.success() 将返回信息包裹起来
         return Result.success("文件上传成功，真实路径为:" + path);
