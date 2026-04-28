@@ -1,41 +1,79 @@
 package com.yuanqi.app.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.mapper.BaseMapper;
 import com.drew.imaging.ImageMetadataReader;
 import com.drew.metadata.Metadata;
 import com.drew.metadata.exif.ExifIFD0Directory;
 import com.drew.metadata.exif.ExifSubIFDDirectory;
 import com.yuanqi.app.entity.PhotoInfo;
+import com.yuanqi.app.entity.PhotoTag;
+import com.yuanqi.app.entity.PhotoCategory;
+import com.yuanqi.app.entity.PhotoTagRelation;
+import com.yuanqi.app.mapper.PhotoCategoryMapper;
 import com.yuanqi.app.mapper.PhotoInfoMapper;
+import com.yuanqi.app.mapper.PhotoTagRelationMapper;
 import com.yuanqi.app.service.PhotoService;
+import com.yuanqi.app.service.PhotoTagService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.File;
 import java.io.InputStream;
 import java.time.ZoneId;
+import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
 
 @Service
-public class PhotoServiceImpl implements PhotoService {
+public class PhotoServiceImpl<P extends BaseMapper<PhotoTagRelation>, P1> implements PhotoService {
 
     @Autowired
-    private PhotoInfoMapper photoInfoMapper; // 注入 Mapper 依赖
+    private PhotoInfoMapper photoInfoMapper;
 
+    @Autowired
+    private PhotoCategoryMapper photoCategoryMapper;
+    @Autowired
+    private PhotoTagService photoTagService;
+
+    @Autowired
+    PhotoTagRelationMapper photoTagRelationMapper;
+
+
+    @Transactional(rollbackFor = Exception.class)
     @Override
-    public String uploadPhoto(MultipartFile file, String title, Long userId) throws Exception {
+    public String uploadPhoto(MultipartFile file, String photo_title, String photo_description,
+                              String location, int category, List<String> photoTags, Long userId) throws Exception {
         if (file.isEmpty()) {
             throw new IllegalArgumentException("文件不能为空");
         }
 
-        // 1. 初始化 PhotoInfo 并绑定基础信息
+        /**
+         * 1. 初始化 PhotoInfo 并绑定基础信息
+         */
         PhotoInfo photo = new PhotoInfo();
         photo.setUserId(userId);
-        photo.setTitle(title);
+        photo.setTitle(photo_title);
+        photo.setDescription(photo_description);
+        photo.setLocation(location);
 
-        // ================= 获取照片信息 =================
+
+        /**
+         2. 给照片绑定分类
+            查询从前端传入的category_id是否存在，如果不存在则抛出异常
+         */
+        boolean isExist = photoCategoryMapper.exists(new LambdaQueryWrapper<PhotoCategory>().eq(PhotoCategory::getId, category));
+        if (!isExist) {
+            throw new IllegalArgumentException("非法的参数，该分类不存在");
+        }
+        photo.setCategory_id(category);
+
+
+        /**
+         * 获取照片的Exif信息并存入PhotoInfo中
+         */
         try (InputStream inputStream = file.getInputStream()) {
             // 让 metadata-extractor 读取图片数据流
             Metadata metadata = ImageMetadataReader.readMetadata(inputStream);
@@ -98,8 +136,8 @@ public class PhotoServiceImpl implements PhotoService {
         }
 
 
-        /*
-            开始上传照片
+        /**
+         开始上传照片
          */
 
         // 1. 定义存储路径
@@ -117,11 +155,31 @@ public class PhotoServiceImpl implements PhotoService {
         photo.setUserId(userId);
         photoInfoMapper.insert(photo);
 
+
+        /**
+         * 标签处理
+         */
+
+        //1. 获取照片自增 ID
+        Long photoId = photo.getId();
+        List<PhotoTagRelation> list = new ArrayList<>();
+
+        // 2. 解析前端标签：若标签不存在则新建，并构建中间表关联对象（暂存内存）
+        for (String name : photoTags) {
+            PhotoTag photoTag = photoTagService.getOrCreate(name);
+            list.add(new PhotoTagRelation(photoId, photoTag.getId()));
+
+        }
+        // 3. 将照片与标签的关联关系持久化到中间表
+        if (!list.isEmpty()) {
+            for (PhotoTagRelation relation : list) {
+                photoTagRelationMapper.insert(relation);
+            }
+        }
+
+
         return dest.getAbsolutePath();
     }
-
-
-
 
 
     @Override
@@ -142,5 +200,6 @@ public class PhotoServiceImpl implements PhotoService {
         // 3. 把组装好的条件扔给 selectList 方法
         return photoInfoMapper.selectList(wrapper);
     }
+
 
 }

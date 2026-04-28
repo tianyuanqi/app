@@ -38,7 +38,8 @@ public class SecurityConfig {
                                 "/api/photos/upload",
                                 "/v3/api-docs/**",
                                 "/swagger-ui/**",
-                                "/swagger-ui.html").permitAll()
+                                "/swagger-ui.html",
+                                "/api/categories/**").permitAll()
 
                         // 其他任何请求（比如 /api/photos/upload）都必须经过认证才能访问
                         .anyRequest().authenticated()

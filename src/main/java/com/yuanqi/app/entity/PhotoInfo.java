@@ -6,9 +6,8 @@ import com.baomidou.mybatisplus.annotation.TableName;
 import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.Data;
 import java.time.LocalDateTime;
-import java.util.Date;
 
-@Data // Lombok 注解，自动生成 Getter/Setter，保持代码整洁
+@Data // Lombok 注解，自动生成 Getter/Setter
 @Schema(description = "照片详细信息实体")
 @TableName("photo_info") // 告诉 MyBatis-Plus 这个类对应哪张表
 public class PhotoInfo {
@@ -17,9 +16,12 @@ public class PhotoInfo {
     @TableId(type = IdType.AUTO) // 标识这是主键，且为自增
     private Long id;
 
-    // 👇 新增：绑定用户的核心字段！记录是谁上传了这张照片
+    // 绑定用户的id，记录是谁上传了这张照片
     @Schema(description = "上传者的真实内部 ID")
     private Long userId;
+
+    @Schema(description = "拍摄位置", example = "日本·北海道")
+    private String location;
 
     @Schema(description = "照片标题")
     private String title;
@@ -53,4 +55,7 @@ public class PhotoInfo {
 
     @Schema(description = "拍摄时间")
     private LocalDateTime shoot_date;
+
+    @Schema(description = "照片分类")
+    private Integer category_id;
 }
