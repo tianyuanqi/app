@@ -12,15 +12,13 @@ import org.springframework.web.bind.annotation.RestController;
 import java.util.List;
 
 
-@Tag(name = "2. 照片类型", description = "负责照片类型的新增，查询等操作")
+@Tag(name = "2. 照片分类", description = "负责照片类型的新增，查询等操作")
 @RestController
 @RequestMapping("/api/categories")
 public class PhotoCategoryController {
 
     @Autowired
     private PhotoCategoryService categoryService;
-
-
 
     @Operation(summary = "获取照片类型", description = "查询数据库中所有的照片类型，返回给前端让用户进行选择")
     @GetMapping("/list")

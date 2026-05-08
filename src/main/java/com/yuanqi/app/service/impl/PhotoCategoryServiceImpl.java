@@ -17,7 +17,6 @@ import java.util.List;
 @Service
 public class PhotoCategoryServiceImpl implements PhotoCategoryService {
 
-
     @Autowired
     PhotoCategoryMapper mapper;
 

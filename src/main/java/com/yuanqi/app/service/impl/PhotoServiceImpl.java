@@ -2,6 +2,8 @@ package com.yuanqi.app.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.mapper.BaseMapper;
+import com.baomidou.mybatisplus.core.metadata.IPage;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.drew.imaging.ImageMetadataReader;
 import com.drew.metadata.Metadata;
 import com.drew.metadata.exif.ExifIFD0Directory;
@@ -124,10 +126,11 @@ public class PhotoServiceImpl<P extends BaseMapper<PhotoTagRelation>, P1> implem
             } else {
                 // 如果图片被压缩去除了 Exif，或者干脆就是张普通截图,展示未知
                 photo.setCameraBody("null");
+                photo.setLens("null");
                 photo.setAperture("null");
                 photo.setShutterSpeed("null");
                 photo.setFocalLength("null");
-                photo.setCameraBody("null");
+                photo.setIso(null);
                 photo.setShoot_date(null);
             }
         } catch (Exception e) {
@@ -183,8 +186,14 @@ public class PhotoServiceImpl<P extends BaseMapper<PhotoTagRelation>, P1> implem
 
 
     @Override
-    public List<PhotoInfo> getPhotoList() {
-        return photoInfoMapper.selectList(null);
+    public IPage<PhotoInfo> getPhotoList(Integer current, Integer pageSize) {
+
+        Page<PhotoInfo> page=new Page<>(current,pageSize);
+
+        LambdaQueryWrapper<PhotoInfo> wrapper = new LambdaQueryWrapper();
+        wrapper.orderByDesc(PhotoInfo::getCreateTime);
+
+        return photoInfoMapper.selectPage(page,wrapper);
     }
 
     @Override
