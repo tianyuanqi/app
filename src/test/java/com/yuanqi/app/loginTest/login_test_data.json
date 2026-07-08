@@ -1,0 +1,74 @@
+[
+    {
+        "desc": "正向用例，正确的用户名和密码",
+        "username": "qm",
+        "password": 123456,
+        "expect_status": 200
+    },
+    {
+        "desc": "反向用例，用户名超长",
+        "username": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "password": 123456,
+        "expect_status": 400
+    },
+    {
+        "desc": "反向用例，用户名超短",
+        "username": "a",
+        "password": 123456,
+        "expect_status": 400
+    },
+    {
+        "desc": "反向用例，用户名不存在",
+        "username": "sb",
+        "password": 123456,
+        "expect_status": 400
+    },
+    {
+        "desc": "反向用例，用户名含有特殊字符",
+        "username": "！@#￥",
+        "password": 123456,
+        "expect_status": 400
+    },
+    {
+        "desc": "反向用例，用户名为空",
+        "username": "",
+        "password": 123456,
+        "expect_status": 400
+    },
+    {
+        "desc": "反向用例，用户名包含空格",
+        "username": "q m",
+        "password": 123456,
+        "expect_status": 400
+    },
+    {
+        "desc": "反向用例,密码不到6位",
+        "username": "qm",
+        "password": "12345",
+        "expect_status": 400
+    },
+    {
+        "desc": "反向用例,密码超长",
+        "username": "qm",
+        "password": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "expect_status": 400
+    },
+    {
+        "desc": "反向用例,密码含有特殊字符",
+        "username": "qm",
+        "password": "1234！@#￥5",
+        "expect_status": 400
+    },
+    {
+        "desc": "反向用例,密码为空",
+        "username": "qm",
+        "password": "12345",
+        "expect_status": 400
+    },
+    {
+        "desc": "反向用例,密码含有空格",
+        "username": "qm",
+        "password": "123 45",
+        "expect_status": 400
+    }
+]

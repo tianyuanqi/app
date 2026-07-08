@@ -1,0 +1,33 @@
+# ==========================================
+# Cursor AI 专属忽略配置 (.cursorignore)
+# ==========================================
+
+# 1. Python 虚拟环境与依赖 (文件极多，严重消耗 Token)
+.venv/
+venv/
+env/
+__pycache__/
+
+# 2. 敏感配置文件 (保护本地数据库连接与明文密码)
+# 针对 Spring Boot 的配置文件进行拦截
+application.properties
+application.yml
+application.yaml
+src/main/resources/application.properties
+src/main/resources/application.yml
+
+# 3. Java 编译产物与缓存 (AI 无需读取字节码)
+target/
+*.class
+.mvn/
+.cache/
+
+# 4. IDE 与编辑器自身配置
+.idea/
+.vscode/
+*.iml
+
+# 5. 运行日志与文件上传缓存 (避免干扰 AI 上下文)
+*.log
+logs/
+.DS_Store
