@@ -1,0 +1,40 @@
+status: ready_for_testing
+
+backend_repository: tianyuanqi/app
+branch: master
+backend_commit: d329bc58c6944c844d8b351589b3b5da8bd66b73
+
+base_url: http://localhost:8080
+
+swagger_url: http://localhost:8080/swagger-ui/index.html
+openapi_url: http://localhost:8080/v3/api-docs
+
+start_command: ./mvnw spring-boot:run
+
+implemented_apis:
+  - method: POST
+    path: /api/users/login
+    authentication: false
+    content_type: application/json
+
+  - method: GET
+    path: /api/photos/list
+    authentication: false
+    query_parameters:
+      - current
+      - pageSize
+
+  - method: GET
+    path: /api/photos/my-list
+    authentication: true
+
+  - method: POST
+    path: /api/photos/upload
+    authentication: true
+    content_type: multipart/form-data
+
+test_environment:
+  database: local_mysql
+  test_account: local_test_user
+
+known_issues: []
