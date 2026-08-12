@@ -1,40 +1,118 @@
 status: ready_for_testing
 
 backend_repository: tianyuanqi/app
-branch: master
-backend_commit: d329bc58c6944c844d8b351589b3b5da8bd66b73
-
 base_url: http://localhost:8080
 
-swagger_url: http://localhost:8080/swagger-ui/index.html
+swagger_url: http://localhost:8080/swagger-ui.html
 openapi_url: http://localhost:8080/v3/api-docs
+actuator_health: http://localhost:8080/actuator/health
+auth_module_doc: docs/auth-module.md
+home_module_doc: docs/home-module.md
 
 start_command: ./mvnw spring-boot:run
+default_profile: local
+
+home_highlights:
+  - upload_default_status: PENDING
+  - public_feed_only_published: true
+  - personal_profile_with_photo_wall: true
+  - minimal_moderation: approve_reject_offline
+
+seed_accounts:
+  - username: admin
+    email: admin@example.com
+    password: Passw0rd
+    role: ADMIN
+  - username: user1
+    email: user1@example.com
+    password: Passw0rd
+    role: USER
+  - username: user2
+    email: user2@example.com
+    password: Passw0rd
+    role: USER
+
+auth_highlights:
+  - email_required_on_register: true
+  - login_account_field: email_or_username
+  - lock_policy: 5_failures_15_minutes
+  - access_ttl: 30m
+  - refresh_ttl: 14d_rotating_revocable
+  - identity_primary: uid
+  - userId_deprecated_but_kept: true
 
 implemented_apis:
   - method: POST
-    path: /api/users/login
+    path: /api/v1/auth/login
     authentication: false
     content_type: application/json
+    body_fields: [account, password]
 
-  - method: GET
-    path: /api/photos/list
+  - method: POST
+    path: /api/v1/auth/register
     authentication: false
-    query_parameters:
-      - current
-      - pageSize
+    content_type: application/json
+    body_fields: [username, password, email]
+
+  - method: POST
+    path: /api/v1/auth/token/refresh
+    authentication: false
+    content_type: application/json
+    body_fields: [refreshToken]
+
+  - method: POST
+    path: /api/v1/auth/logout
+    authentication: true
+    content_type: application/json
+    body_fields: [refreshToken]
 
   - method: GET
-    path: /api/photos/my-list
+    path: /api/v1/users/me
+    authentication: true
+
+  - method: PUT
+    path: /api/v1/users/me
+    authentication: true
+
+  - method: PUT
+    path: /api/v1/users/me/password
+    authentication: true
+
+  - method: GET
+    path: /api/v1/users/{uid}
+    authentication: false
+
+  - method: GET
+    path: /api/v1/photos
+    authentication: false
+    aliases: [/api/v1/photos/list]
+
+  - method: GET
+    path: /api/v1/photos/mine
+    authentication: true
+    aliases: [/api/v1/photos/my-list]
+
+  - method: GET
+    path: /api/v1/photos/{id}
+    authentication: false
+
+  - method: PUT
+    path: /api/v1/photos/{id}
+    authentication: true
+
+  - method: DELETE
+    path: /api/v1/photos/{id}
     authentication: true
 
   - method: POST
-    path: /api/photos/upload
+    path: /api/v1/photos
     authentication: true
     content_type: multipart/form-data
+    aliases: [/api/v1/photos/upload]
 
-test_environment:
-  database: local_mysql
-  test_account: local_test_user
+  - method: GET
+    path: /api/v1/categories
+    authentication: false
+    aliases: [/api/v1/categories/list]
 
 known_issues: []
