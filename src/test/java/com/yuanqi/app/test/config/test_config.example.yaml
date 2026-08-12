@@ -1,0 +1,20 @@
+base_url: http://localhost:8080
+account:
+  username: qm
+  password: "123456"
+database:
+  host: 127.0.0.1
+  port: 3306
+  user: root
+  password: "<与 application.yml 一致>"
+  database: blog
+test_photo:
+  title_prefix: "AUTO_TEST_"
+  description: "自动化Demo测试照片"
+  location: "测试地点"
+  category: 1
+  tags:
+    - auto
+    - demo
+report:
+  output_dir: reports

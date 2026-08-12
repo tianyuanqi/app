@@ -1,0 +1,50 @@
+# 公共配置：各环境共用项
+spring:
+  application:
+    name: app
+  profiles:
+    active: ${SPRING_PROFILES_ACTIVE:local}
+  servlet:
+    multipart:
+      max-file-size: 50MB
+      max-request-size: 100MB
+  flyway:
+    enabled: true
+    # 已有库首次接入时自动 baseline，避免误当作空库执行建表失败
+    baseline-on-migrate: true
+    baseline-version: 0
+    locations: classpath:db/migration
+
+server:
+  port: ${SERVER_PORT:8080}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      show-details: when_authorized
+
+springdoc:
+  api-docs:
+    path: /v3/api-docs
+  swagger-ui:
+    path: /swagger-ui.html
+
+# 应用自定义配置（密钥与路径由环境变量注入）
+app:
+  jwt:
+    secret: ${JWT_SECRET:Yuanqi_Photo_Secret_Key_2026_ChangeMe_32B}
+    access-expire-ms: ${JWT_ACCESS_EXPIRE_MS:1800000}
+    refresh-expire-ms: ${JWT_REFRESH_EXPIRE_MS:1209600000}
+  auth:
+    max-failed-login: 5
+    lock-minutes: 15
+    login-rate-limit-per-minute: 20
+    register-rate-limit-per-minute: 10
+    access-expire-ms: ${JWT_ACCESS_EXPIRE_MS:1800000}
+    refresh-expire-ms: ${JWT_REFRESH_EXPIRE_MS:1209600000}
+  upload:
+    dir: ${APP_UPLOAD_DIR:./uploads}

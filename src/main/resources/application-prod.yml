@@ -1,0 +1,22 @@
+# 生产环境：收紧 Actuator，强制环境变量注入敏感配置
+spring:
+  datasource:
+    url: ${DB_URL}
+    username: ${DB_USERNAME}
+    password: ${DB_PASSWORD}
+    driver-class-name: com.mysql.cj.jdbc.Driver
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
+  endpoint:
+    health:
+      show-details: never
+
+app:
+  jwt:
+    secret: ${JWT_SECRET}
+  upload:
+    dir: ${APP_UPLOAD_DIR}
