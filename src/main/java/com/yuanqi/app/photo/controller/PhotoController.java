@@ -4,6 +4,7 @@ import com.yuanqi.app.common.api.Result;
 import com.yuanqi.app.common.context.UserContext;
 import com.yuanqi.app.photo.dto.WorkRequests;
 import com.yuanqi.app.photo.service.WorkService;
+import com.yuanqi.app.photo.service.WorkDeletionService;
 import com.yuanqi.app.photo.vo.WorkViews;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
@@ -26,8 +27,9 @@ import org.springframework.web.bind.annotation.RestController;
 @SecurityRequirement(name = "Authorization")
 public class PhotoController {
     private final WorkService service;
+    private final WorkDeletionService deletionService;
 
-    public PhotoController(WorkService service) { this.service = service; }
+    public PhotoController(WorkService service, WorkDeletionService deletionService) { this.service = service; this.deletionService=deletionService; }
 
     @Operation(summary = "创建作品和首个草稿")
     @PostMapping
@@ -69,6 +71,10 @@ public class PhotoController {
             @RequestHeader(value = HttpHeaders.IF_MATCH, required = false) String ifMatch) {
         return response(service.withdraw(UserContext.getUserId(), workId, ifMatch));
     }
+
+    @Operation(summary="彻底删除自己的作品、互动和媒体引用")
+    @org.springframework.web.bind.annotation.DeleteMapping("/{workId}")
+    public Result<WorkViews.DeleteResult> delete(@PathVariable String workId,@RequestHeader(value=HttpHeaders.IF_MATCH,required=false)String ifMatch,@org.springframework.web.bind.annotation.RequestParam boolean confirmation){return Result.success(deletionService.delete(UserContext.getUserId(),workId,ifMatch,confirmation));}
 
     private ResponseEntity<Result<WorkViews.AuthorWork>> response(WorkViews.AuthorWork view) {
         return ResponseEntity.ok().header(HttpHeaders.ETAG, view.summary().versionTag()).body(Result.success(view));

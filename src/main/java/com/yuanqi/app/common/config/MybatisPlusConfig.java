@@ -11,7 +11,8 @@ import org.springframework.context.annotation.Configuration;
  * MyBatis-Plus 分页与 Mapper 扫描配置。
  */
 @Configuration
-@MapperScan({"com.yuanqi.app.user.mapper", "com.yuanqi.app.photo.mapper", "com.yuanqi.app.auth.mapper"})
+@MapperScan({"com.yuanqi.app.user.mapper", "com.yuanqi.app.photo.mapper", "com.yuanqi.app.auth.mapper",
+        "com.yuanqi.app.interaction.mapper", "com.yuanqi.app.moderation.mapper"})
 public class MybatisPlusConfig {
 
     @Bean

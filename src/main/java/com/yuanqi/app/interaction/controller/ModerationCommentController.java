@@ -21,5 +21,5 @@ public class ModerationCommentController {
     private final InteractionService service;
     public ModerationCommentController(InteractionService service){this.service=service;}
     @Operation(summary="管理员删除违规评论；公开结果不披露操作者和原因")
-    @DeleteMapping("/{commentId}") public Result<InteractionViews.CommentMutation> delete(@PathVariable String commentId,@Valid @RequestBody InteractionRequests.AdminDelete request){return Result.success(service.deleteAdmin(UserContext.getUserId(),commentId));}
+    @DeleteMapping("/{commentId}") public Result<InteractionViews.CommentMutation> delete(@PathVariable String commentId,@Valid @RequestBody InteractionRequests.AdminDelete request){return Result.success(service.deleteAdmin(UserContext.getUserId(),commentId,request.reason()));}
 }

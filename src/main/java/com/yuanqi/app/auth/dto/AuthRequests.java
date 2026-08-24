@@ -22,7 +22,7 @@ public final class AuthRequests {
             @NotBlank @Email @Size(max = 320) String email,
             @NotBlank @Size(max = 256) String password,
             @NotBlank @Pattern(regexp = "^[0-9]{6}$") String verificationCode,
-            UUID registrationAttemptId) {
+            @jakarta.validation.constraints.NotNull UUID registrationAttemptId) {
     }
 
     @Schema(name = "LoginRequest")

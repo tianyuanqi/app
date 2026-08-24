@@ -5,8 +5,10 @@ import com.yuanqi.app.auth.dto.AuthRequests;
 import com.yuanqi.app.auth.entity.Account;
 import com.yuanqi.app.auth.entity.LoginSecurityState;
 import com.yuanqi.app.auth.entity.VerificationFlow;
+import com.yuanqi.app.auth.entity.RegistrationAttempt;
 import com.yuanqi.app.auth.mapper.AccountMapper;
 import com.yuanqi.app.auth.mapper.LoginSecurityStateMapper;
+import com.yuanqi.app.auth.mapper.RegistrationAttemptMapper;
 import com.yuanqi.app.auth.support.AuthPolicy;
 import com.yuanqi.app.auth.support.EmailNormalizer;
 import com.yuanqi.app.auth.support.PublicIdGenerator;
@@ -38,13 +40,14 @@ public class AuthService {
     private final AuthProperties properties;
     private final Clock clock;
     private final LoginAttemptService loginAttemptService;
+    private final RegistrationAttemptMapper attemptMapper;
 
     public AuthService(AccountMapper accountMapper, UserProfileMapper profileMapper,
                        LoginSecurityStateMapper securityMapper, VerificationService verificationService,
                        AuthRateLimiter rateLimiter, AuthSessionService sessionService,
                        PasswordEncoder passwordEncoder, EmailNormalizer emailNormalizer,
                        PublicIdGenerator idGenerator, AuthProperties properties, Clock clock,
-                       LoginAttemptService loginAttemptService) {
+                       LoginAttemptService loginAttemptService, RegistrationAttemptMapper attemptMapper) {
         this.accountMapper = accountMapper;
         this.profileMapper = profileMapper;
         this.securityMapper = securityMapper;
@@ -57,10 +60,13 @@ public class AuthService {
         this.properties = properties;
         this.clock = clock;
         this.loginAttemptService = loginAttemptService;
+        this.attemptMapper = attemptMapper;
     }
 
     @Transactional
     public AuthSessionService.IssuedSession register(AuthRequests.Register request, String ip) {
+        if (attemptMapper.selectById(request.registrationAttemptId().toString()) != null)
+            throw new BusinessException(ErrorCode.REGISTRATION_ALREADY_COMPLETED);
         AuthPolicy.validatePassword(request.password());
         String emailKey = emailNormalizer.normalize(request.email());
         rateLimiter.checkRegistration(emailKey, ip);
@@ -98,6 +104,9 @@ public class AuthService {
         security.setRowVersion(0L);
         securityMapper.insert(security);
         verificationService.consume(flow);
+        RegistrationAttempt attempt=new RegistrationAttempt();attempt.setAttemptId(request.registrationAttemptId().toString());
+        attempt.setFlowId(flow.getId());attempt.setAccountId(account.getId());attempt.setStatus("COMPLETED");attempt.setCompletedAt(now);
+        attemptMapper.insert(attempt);
         return sessionService.issue(account);
     }
 

@@ -8,8 +8,11 @@ import com.yuanqi.app.common.api.ErrorCode;
 import com.yuanqi.app.common.exception.BusinessException;
 import com.yuanqi.app.common.text.UnicodeText;
 import com.yuanqi.app.interaction.entity.PhotoComment;
+import com.yuanqi.app.interaction.entity.CommentModerationEvent;
 import com.yuanqi.app.interaction.mapper.PhotoCommentMapper;
 import com.yuanqi.app.interaction.mapper.PhotoLikeMapper;
+import com.yuanqi.app.interaction.mapper.CommentModerationEventMapper;
+import com.yuanqi.app.auth.support.AuthPolicy;
 import com.yuanqi.app.interaction.vo.InteractionViews;
 import com.yuanqi.app.photo.entity.PhotoWork;
 import com.yuanqi.app.photo.mapper.PhotoWorkMapper;
@@ -31,14 +34,16 @@ public class InteractionService {
     private final PhotoCommentMapper commentMapper; private final AccountMapper accountMapper;
     private final UserProfileMapper profileMapper; private final PublicIdGenerator ids;
     private final CryptoSupport crypto; private final Clock clock;
+    private final CommentModerationEventMapper moderationEvents;
 
     public InteractionService(PhotoWorkMapper workMapper, PhotoLikeMapper likeMapper,
                               PhotoCommentMapper commentMapper, AccountMapper accountMapper,
                               UserProfileMapper profileMapper, PublicIdGenerator ids,
-                              CryptoSupport crypto, Clock clock) {
+                              CryptoSupport crypto, Clock clock, CommentModerationEventMapper moderationEvents) {
         this.workMapper=workMapper; this.likeMapper=likeMapper; this.commentMapper=commentMapper;
         this.accountMapper=accountMapper; this.profileMapper=profileMapper; this.ids=ids;
         this.crypto=crypto; this.clock=clock;
+        this.moderationEvents=moderationEvents;
     }
 
     @Transactional
@@ -97,12 +102,16 @@ public class InteractionService {
     }
 
     @Transactional
-    public InteractionViews.CommentMutation deleteAdmin(Long adminId,String commentId) {
+    public InteractionViews.CommentMutation deleteAdmin(Long adminId,String commentId,String reason) {
         PhotoComment target=commentMapper.findForUpdate(commentId);
         if(target==null) throw new BusinessException(ErrorCode.RESOURCE_NOT_FOUND);
         PhotoWork work=workMapper.selectById(target.getWorkId());
         if(work==null) throw new BusinessException(ErrorCode.RESOURCE_NOT_FOUND);
-        return deleteTarget(adminId,work,target,true);
+        String validated=AuthPolicy.validateReason(reason);String publicId=target.getCommentId();
+        InteractionViews.CommentMutation result=deleteTarget(adminId,work,target,true);
+        CommentModerationEvent event=new CommentModerationEvent();event.setEventId(ids.next());event.setCommentId(publicId);
+        event.setActorAccountId(adminId);event.setReason(validated);event.setOccurredAt(now());moderationEvents.insert(event);
+        return result;
     }
 
     private InteractionViews.CommentMutation delete(Long actor,String workId,String commentId,boolean admin) {
