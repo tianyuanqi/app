@@ -10,7 +10,7 @@ repository:
   path: /Users/yuanqi/2400px/app
   branch: codex/v1-backend
   source_commit: e80f9257e7213d5bebac29bfd170b067563f010a
-  current_commit_before_handoff_update: b929cfa
+  current_commit_before_handoff_update: 33c2580
   remote_modified: false
   pushed: false
   pull_request_created: false
@@ -30,7 +30,7 @@ environment:
   spring_boot: 3.5.16
   runtime_profile: test
   isolated_development_schema: px2400_v1_dev
-  isolated_test_schema: px2400_v1_be003_final_20260824
+  isolated_test_schema: px2400_v1_be003_final2_20260824
   flyway_schema_version: 14
 
 implementation_slices:
@@ -52,10 +52,12 @@ implementation_slices:
     scope: 幂等并发等待上限与匿名验证码主体归一化
   - commit: b929cfa
     scope: 逐 Operation 受限 ErrorCode/DTO Schema 与认证、状态机、ETag、分页、防枚举集成矩阵
+  - commit: 33c2580
+    scope: 全套 Spring 测试固定使用 test Profile，禁止回落到开发 Schema
 
 runtime_contract:
   authority: http://127.0.0.1:8080/v3/api-docs
-  evidence_file: /private/tmp/2400px-v1-be003-openapi-b929cfa.json
+  evidence_file: /private/tmp/2400px-v1-be003-openapi-33c2580.json
   sha256: 3b9c3c6537302eaf2aa56a19945c53f5cfe50dd8719c98f0e0548c4a3f9f6778
   bytes: 329055
   paths: 40
@@ -85,12 +87,12 @@ verification:
     - { suite: BackendP0IntegrationMatrixTest, count: 7, result: passed }
   fresh_database:
     result: passed
-    schema: px2400_v1_be003_final_20260824
+    schema: px2400_v1_be003_final2_20260824
     migrations: V1-V14
     note: 该 Schema 从空状态一次性成功应用 V1～V14；没有复用失败后修改的 Schema。
   runtime_startup:
     result: passed
-    schema: px2400_v1_be003_final_20260824
+    schema: px2400_v1_be003_final2_20260824
     migrations_validated: 14
   health_check:
     result: passed
@@ -217,5 +219,5 @@ database_safety:
 
 handoff_conclusion:
   result: pass_with_findings
-  summary: V1-BE-GAP-001～003 与 ADR 0006 全部关闭；空库 V1～V14、26 个测试、健康检查和 Commit b929cfa 的运行时 OpenAPI 均有可复核证据，Frontend 与 Tester 可进入 P0 契约联调/验收。Backend 整体仍因 P1/P2 未完成保持 development_incomplete。
+  summary: V1-BE-GAP-001～003 与 ADR 0006 全部关闭；空库 V1～V14、26 个测试、健康检查和 Commit 33c2580 的运行时 OpenAPI 均有可复核证据，Frontend 与 Tester 可进入 P0 契约联调/验收。Backend 整体仍因 P1/P2 未完成保持 development_incomplete。
   required_next_action: 按 Coordinator 的后续顺序工作包处理 V1-BE-GAP-004～009；本任务未修改其状态或范围。
