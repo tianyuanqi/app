@@ -43,9 +43,12 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
                         // 认证公开接口
                         .requestMatchers(
+                                "/api/v1/auth/csrf",
+                                "/api/v1/auth/verification-codes",
                                 "/api/v1/auth/login",
                                 "/api/v1/auth/register",
-                                "/api/v1/auth/token/refresh"
+                                "/api/v1/auth/token/refresh",
+                                "/api/v1/auth/logout"
                         ).permitAll()
                         // 用户资料：me 需登录，公开主页可读
                         .requestMatchers(HttpMethod.GET, "/api/v1/users/me", "/api/v1/users/me/**").authenticated()
@@ -61,7 +64,7 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.PUT, "/api/v1/photos/**").authenticated()
                         .requestMatchers(HttpMethod.DELETE, "/api/v1/photos/**").authenticated()
                         // 审核：仅登录后由服务层校验 ADMIN
-                        .requestMatchers("/api/v1/moderation/**").authenticated()
+                        .requestMatchers("/api/v1/admin/**", "/api/v1/moderation/**").hasRole("ADMIN")
                         // 分类、静态资源、文档与健康检查
                         .requestMatchers("/api/v1/categories", "/api/v1/categories/**").permitAll()
                         .requestMatchers(

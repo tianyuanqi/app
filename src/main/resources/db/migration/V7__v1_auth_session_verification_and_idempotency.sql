@@ -2,7 +2,7 @@ CREATE TABLE email_verification_flow (
     id BIGINT NOT NULL AUTO_INCREMENT,
     flow_id VARCHAR(32) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
     email_key VARCHAR(320) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL,
-    email_ciphertext VARBINARY(1024) NOT NULL,
+    email_address VARCHAR(320) NOT NULL COMMENT '私有字段，仅 MailPort 使用，不进入日志或公开响应',
     purpose VARCHAR(16) CHARACTER SET ascii COLLATE ascii_bin NOT NULL DEFAULT 'REGISTER',
     status VARCHAR(16) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
     failed_attempts INT NOT NULL DEFAULT 0,

@@ -8,16 +8,17 @@ import lombok.Data;
 import java.time.LocalDateTime;
 
 @Data
-@TableName("auth_session")
-public class AuthSession {
+@TableName("auth_refresh_token")
+public class RefreshCredential {
     @TableId(type = IdType.AUTO)
     private Long id;
-    private String sessionId;
-    private Long accountId;
+    private String tokenId;
+    private Long sessionId;
+    private String tokenHash;
+    private Integer rotationNo;
+    private Long parentTokenId;
     private String status;
-    private LocalDateTime loginAt;
-    private LocalDateTime absoluteExpiresAt;
-    private LocalDateTime revokedAt;
-    private String revokeReason;
-    private Long rowVersion;
+    private LocalDateTime issuedAt;
+    private LocalDateTime expiresAt;
+    private LocalDateTime usedAt;
 }

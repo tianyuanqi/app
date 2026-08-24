@@ -8,16 +8,17 @@ import lombok.Data;
 import java.time.LocalDateTime;
 
 @Data
-@TableName("auth_session")
-public class AuthSession {
+@TableName("user_account")
+public class Account {
     @TableId(type = IdType.AUTO)
     private Long id;
-    private String sessionId;
-    private Long accountId;
-    private String status;
-    private LocalDateTime loginAt;
-    private LocalDateTime absoluteExpiresAt;
-    private LocalDateTime revokedAt;
-    private String revokeReason;
+    private String uid;
+    private String email;
+    private String emailKey;
+    private String passwordHash;
+    private String role;
+    private String governanceStatus;
     private Long rowVersion;
+    private LocalDateTime createdAt;
+    private LocalDateTime updatedAt;
 }

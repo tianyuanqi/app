@@ -19,7 +19,6 @@ CREATE TABLE user_account (
     password_hash VARCHAR(255) NOT NULL,
     role VARCHAR(16) CHARACTER SET ascii COLLATE ascii_bin NOT NULL DEFAULT 'USER',
     governance_status VARCHAR(16) CHARACTER SET ascii COLLATE ascii_bin NOT NULL DEFAULT 'ACTIVE',
-    locked_until DATETIME(6) NULL,
     row_version BIGINT NOT NULL DEFAULT 0,
     created_at DATETIME(6) NOT NULL,
     updated_at DATETIME(6) NOT NULL,

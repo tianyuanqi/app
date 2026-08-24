@@ -3,6 +3,7 @@ package com.yuanqi.app.common.exception;
 import com.yuanqi.app.common.api.ErrorCode;
 import com.yuanqi.app.common.api.ErrorResult;
 import com.yuanqi.app.common.context.TraceContext;
+import com.yuanqi.app.auth.service.VerificationException;
 import jakarta.validation.ConstraintViolationException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -30,6 +31,17 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ErrorResult> handleBusiness(BusinessException e) {
         ErrorResult body = new ErrorResult(e.getErrorCode(), e.getMessage(), e.isRetryable(),
                 e.getRetryAfterSeconds(), List.of(), List.of(), null, null, TraceContext.current());
+        ResponseEntity.BodyBuilder builder = ResponseEntity.status(e.getErrorCode().getHttpStatus());
+        if (e.getRetryAfterSeconds() != null) {
+            builder.header(HttpHeaders.RETRY_AFTER, String.valueOf(e.getRetryAfterSeconds()));
+        }
+        return builder.body(body);
+    }
+
+    @ExceptionHandler(VerificationException.class)
+    public ResponseEntity<ErrorResult> handleVerification(VerificationException e) {
+        ErrorResult body = new ErrorResult(e.getErrorCode(), e.getMessage(), e.isRetryable(),
+                e.getRetryAfterSeconds(), List.of(), List.of(), null, e.getVerification(), TraceContext.current());
         ResponseEntity.BodyBuilder builder = ResponseEntity.status(e.getErrorCode().getHttpStatus());
         if (e.getRetryAfterSeconds() != null) {
             builder.header(HttpHeaders.RETRY_AFTER, String.valueOf(e.getRetryAfterSeconds()));

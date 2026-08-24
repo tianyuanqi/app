@@ -8,16 +8,15 @@ import lombok.Data;
 import java.time.LocalDateTime;
 
 @Data
-@TableName("auth_session")
-public class AuthSession {
+@TableName("email_verification_generation")
+public class VerificationGeneration {
     @TableId(type = IdType.AUTO)
     private Long id;
-    private String sessionId;
-    private Long accountId;
+    private Long flowId;
+    private Integer generation;
+    private String codeHmac;
     private String status;
-    private LocalDateTime loginAt;
-    private LocalDateTime absoluteExpiresAt;
-    private LocalDateTime revokedAt;
-    private String revokeReason;
-    private Long rowVersion;
+    private LocalDateTime sentAt;
+    private LocalDateTime expiresAt;
+    private LocalDateTime createdAt;
 }
