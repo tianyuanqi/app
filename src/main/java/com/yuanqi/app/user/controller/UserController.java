@@ -9,6 +9,7 @@ import com.yuanqi.app.user.service.UserService;
 import com.yuanqi.app.user.vo.UserProfileVO;
 import com.yuanqi.app.user.vo.UserVO;
 import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -33,19 +34,23 @@ public class UserController {
         this.userService = userService;
     }
 
-    @Operation(summary = "获取当前用户资料")
+    @Operation(summary = "获取当前用户资料", security = @SecurityRequirement(name = "Authorization"))
     @GetMapping("/me")
     public Result<UserVO> profile() {
         return Result.success(userService.getProfile(UserContext.getUserId()));
     }
 
-    @Operation(summary = "修改当前用户资料", description = "支持邮箱、生日、性别、简介、头像")
+    @Operation(
+            summary = "修改当前用户资料",
+            description = "支持邮箱、生日、性别、简介、头像",
+            security = @SecurityRequirement(name = "Authorization")
+    )
     @PutMapping("/me")
     public Result<UserVO> updateProfile(@Valid @RequestBody UserRequests.UpdateProfile request) {
         return Result.success(userService.updateProfile(UserContext.getUserId(), request));
     }
 
-    @Operation(summary = "修改当前用户密码")
+    @Operation(summary = "修改当前用户密码", security = @SecurityRequirement(name = "Authorization"))
     @PutMapping("/me/password")
     public Result<Void> changePassword(@Valid @RequestBody UserRequests.ChangePassword request) {
         userService.changePassword(UserContext.getUserId(), request);

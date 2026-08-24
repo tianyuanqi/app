@@ -1,118 +1,234 @@
-status: ready_for_testing
+status: partially_ready
+as_of: "2026-08-12"
+phase: takeover_acceptance
 
 backend_repository: tianyuanqi/app
-base_url: http://localhost:8080
+branch: master
+git_state_at_takeover:
+  worktree_clean_before_acceptance_changes: true
+  local_commits_ahead_of_origin: 2
+  history_rewritten: false
 
-swagger_url: http://localhost:8080/swagger-ui.html
-openapi_url: http://localhost:8080/v3/api-docs
-actuator_health: http://localhost:8080/actuator/health
-auth_module_doc: docs/auth-module.md
-home_module_doc: docs/home-module.md
+runtime:
+  base_url: http://localhost:8080
+  default_profile: local
+  start_command: java -jar target/app-0.0.1-SNAPSHOT.jar
+  source_start_command: ./mvnw spring-boot:run
+  java: 17.0.18
+  spring_boot: 3.5.16
+  database: MySQL 8.0
+  database_schema: blog
+  flyway_current_version: 5
+  flyway_validation: passed
+  health_status: UP
 
-start_command: ./mvnw spring-boot:run
-default_profile: local
+contract:
+  source_of_truth:
+    - backend_implementation
+    - http://localhost:8080/v3/api-docs
+  frontend_guide: docs/frontend-api-contract.md
+  swagger_url: http://localhost:8080/swagger-ui.html
+  openapi_url: http://localhost:8080/v3/api-docs
+  actuator_health: http://localhost:8080/actuator/health
+  api_prefix: /api/v1
+  response_envelope: '{code, message, data}'
+  authorization_header: 'Authorization: Bearer <accessToken>'
+  public_user_identifier: uid
 
-home_highlights:
-  - upload_default_status: PENDING
-  - public_feed_only_published: true
-  - personal_profile_with_photo_wall: true
-  - minimal_moderation: approve_reject_offline
+verification:
+  compile:
+    command: ./mvnw -DskipTests clean package
+    result: passed
+    notes:
+      - 70 main source files compiled
+      - executable JAR generated
+      - HomeService reports a deprecated API compile warning
+  startup:
+    result: passed
+    profile: local
+    port: 8080
+  database_connection: passed
+  flyway:
+    result: passed
+    schema_version: 5
+    migrations_validated: 6
+    migration_needed: false
+  health_check:
+    result: passed
+    status: UP
+    db_component: UP
+  openapi_metadata:
+    result: passed
+    paths: 24
+    operations: 28
+    public_operations_without_bearer: verified
+    protected_operations_with_bearer: verified
+    search_and_feed_query_parameters_expanded: verified
+  manual_api_smoke:
+    passed:
+      - public categories
+      - public home feed
+      - public hot tags
+      - public photo search
+      - user login and access authentication
+      - unauthenticated access rejection
+      - current user profile
+      - public user profile
+      - owner pending photo visibility
+      - non-owner pending photo concealment as 404
+      - user moderation rejection as 403
+      - admin pending moderation list
+    failed:
+      - refresh token rotation
+      - seed photo static resource
+      - seed avatar static resource
+    not_executed_to_avoid_business_mutation:
+      - register
+      - update profile
+      - change password
+      - upload
+      - update photo
+      - delete photo
+      - submit photo
+      - approve photo
+      - reject photo
+      - offline photo
+  automated_tests:
+    result: not_run
+    reason: phase explicitly excludes writing or running business automation; build used -DskipTests
 
-seed_accounts:
-  - username: admin
-    email: admin@example.com
-    password: Passw0rd
-    role: ADMIN
-  - username: user1
-    email: user1@example.com
-    password: Passw0rd
-    role: USER
-  - username: user2
-    email: user2@example.com
-    password: Passw0rd
-    role: USER
+integration_readiness:
+  backend_overall_ready: false
+  frontend_can_integrate: partially
+  ready_scopes:
+    - public home feed/categories/hot-tags
+    - public photo search/detail contract
+    - public user profile/photo wall
+    - login plus accessToken protected reads
+    - current user profile read
+    - my photo list read
+    - admin pending list and role boundary
+  blocked_scopes:
+    - refresh token rotation and reuse protection
+    - reliable logout/session revocation
+    - login failure lock policy
+    - seed image/avatar rendering
+  write_scopes_need_dedicated_acceptance_data:
+    - registration and profile/password mutation
+    - upload/edit/delete/submit
+    - approve/reject/offline
 
-auth_highlights:
-  - email_required_on_register: true
-  - login_account_field: email_or_username
-  - lock_policy: 5_failures_15_minutes
-  - access_ttl: 30m
-  - refresh_ttl: 14d_rotating_revocable
-  - identity_primary: uid
-  - userId_deprecated_but_kept: true
+breaking_changes:
+  present: false
+  notes:
+    - No route, request field, response field, or business behavior was intentionally changed during takeover acceptance.
+    - OpenAPI metadata was corrected so public operations are no longer globally marked Bearer and protected operations declare Bearer explicitly.
+    - Search and feed query objects are expanded into individual OpenAPI query parameters; runtime request behavior is unchanged.
 
 implemented_apis:
-  - method: POST
-    path: /api/v1/auth/login
-    authentication: false
-    content_type: application/json
-    body_fields: [account, password]
+  - { method: POST, path: /api/v1/auth/login, authentication: public, request: 'JSON {account,password}' }
+  - { method: POST, path: /api/v1/auth/register, authentication: public, request: 'JSON {username,password,email}' }
+  - { method: POST, path: /api/v1/auth/token/refresh, authentication: public, request: 'JSON {refreshToken}', readiness: blocked }
+  - { method: POST, path: /api/v1/auth/logout, authentication: bearer, request: 'JSON {refreshToken}', readiness: blocked }
+  - { method: GET, path: /api/v1/users/me, authentication: bearer }
+  - { method: PUT, path: /api/v1/users/me, authentication: bearer, request: 'JSON {email?,birth?,gender?,bio?,avatarUrl?}' }
+  - { method: PUT, path: /api/v1/users/me/password, authentication: bearer, request: 'JSON {oldPassword,newPassword}' }
+  - { method: GET, path: '/api/v1/users/{uid}', authentication: public }
+  - { method: GET, path: '/api/v1/users/{uid}/photos', authentication: public, query: [current, pageSize] }
+  - { method: GET, path: /api/v1/home/feed, authentication: public, query: [current, pageSize, categoryId, tag, keyword, sort] }
+  - { method: GET, path: /api/v1/home/categories, authentication: public }
+  - { method: GET, path: /api/v1/home/hot-tags, authentication: public, query: [limit] }
+  - { method: GET, path: /api/v1/photos, authentication: public, aliases: [/api/v1/photos/list], response: 'Page<PhotoCardVO>' }
+  - { method: GET, path: /api/v1/photos/mine, authentication: bearer, aliases: [/api/v1/photos/my-list], query: [current, pageSize, status] }
+  - { method: GET, path: '/api/v1/photos/{id}', authentication: 'public for PUBLISHED; otherwise owner or ADMIN' }
+  - { method: PUT, path: '/api/v1/photos/{id}', authentication: 'bearer + owner', request: 'JSON {title?,description?,location?,categoryId?,tags?}' }
+  - { method: DELETE, path: '/api/v1/photos/{id}', authentication: 'bearer + owner' }
+  - { method: POST, path: '/api/v1/photos/{id}/submit', authentication: 'bearer + owner' }
+  - { method: POST, path: /api/v1/photos, authentication: bearer, aliases: [/api/v1/photos/upload], content_type: multipart/form-data, request_fields: [file, title, description, location, category, tag] }
+  - { method: GET, path: /api/v1/categories, authentication: public, aliases: [/api/v1/categories/list] }
+  - { method: GET, path: /api/v1/moderation/photos, authentication: 'bearer + ADMIN', query: [current, pageSize] }
+  - { method: POST, path: '/api/v1/moderation/photos/{id}/approve', authentication: 'bearer + ADMIN' }
+  - { method: POST, path: '/api/v1/moderation/photos/{id}/reject', authentication: 'bearer + ADMIN', request: 'optional JSON {reason?}' }
+  - { method: POST, path: '/api/v1/moderation/photos/{id}/offline', authentication: 'bearer + ADMIN' }
 
-  - method: POST
-    path: /api/v1/auth/register
-    authentication: false
-    content_type: application/json
-    body_fields: [username, password, email]
+known_issues:
+  - id: AUTH-001
+    priority: P0
+    area: refresh_token
+    summary: Refresh JWT jti does not match auth_session.jti, so a newly issued refresh token returns 40102.
+    evidence: JwtService creates a custom jti claim and buildToken later overwrites the standard JWT ID; AuthSessionService reads claims.get('jti') and queries the database by the original generated jti.
+    impact: Access tokens work until expiry, but token refresh and documented rotation cannot be used.
 
-  - method: POST
-    path: /api/v1/auth/token/refresh
-    authentication: false
-    content_type: application/json
-    body_fields: [refreshToken]
+  - id: AUTH-002
+    priority: P0
+    area: session_revocation
+    summary: Logout may return 200 without revoking the database session.
+    evidence: revokeByRefreshToken treats a missing session as idempotent success; the user1 and admin acceptance sessions remained active in auth_session after their logout calls.
+    impact: Frontend cannot rely on logout to invalidate refresh sessions.
 
-  - method: POST
-    path: /api/v1/auth/logout
-    authentication: true
-    content_type: application/json
-    body_fields: [refreshToken]
+  - id: AUTH-003
+    priority: P0
+    area: authentication_security
+    summary: Login failure counters/lock and refresh reuse revocation are updated inside transactions that rethrow RuntimeException.
+    evidence: AuthService.login and refresh use rollbackFor=Exception and throw BusinessException after security updates.
+    impact: Security state updates are at high risk of rollback; lock and reuse protection require correction and re-verification.
 
-  - method: GET
-    path: /api/v1/users/me
-    authentication: true
+  - id: MEDIA-001
+    priority: P1
+    area: static_resources
+    summary: V5 seed photo and avatar URLs point to files that are not present.
+    evidence: GET seed photo/avatar returned HTTP 500; NoResourceFoundException is handled as INTERNAL_ERROR instead of 404.
+    impact: Seed feed/profile cards cannot render their images and missing resources produce the wrong HTTP status.
 
-  - method: PUT
-    path: /api/v1/users/me
-    authentication: true
+  - id: DB-001
+    priority: P1
+    area: seed_migration
+    summary: V5 uses fixed category IDs that already have different meanings in an existing database.
+    evidence: Seed titles expected as landscape/portrait/street map to existing categories such as 未指定, 建筑, 自然风光.
+    impact: Seed content category semantics are incorrect on an existing schema.
 
-  - method: PUT
-    path: /api/v1/users/me/password
-    authentication: true
+  - id: PHOTO-001
+    priority: P1
+    area: category_mapping
+    summary: Some photo cards return category null.
+    evidence: Public feed smoke returned category=null for V5 seed records.
+    impact: Frontend must tolerate null until data/mapping repair; it should not invent a category.
 
-  - method: GET
-    path: /api/v1/users/{uid}
-    authentication: false
+  - id: FILE-001
+    priority: P2
+    area: upload_storage
+    summary: The local upload default is a machine-specific absolute path and file writes are not transactionally coupled to database writes.
+    impact: Environment portability and orphan-file cleanup need explicit handling.
 
-  - method: GET
-    path: /api/v1/photos
-    authentication: false
-    aliases: [/api/v1/photos/list]
+  - id: PERF-001
+    priority: P2
+    area: query_performance
+    summary: PhotoAssembler performs per-record author/category lookups and hot-tags loads published IDs and relations into memory.
+    impact: Feed, search, walls and hot tags will degrade as data volume grows.
 
-  - method: GET
-    path: /api/v1/photos/mine
-    authentication: true
-    aliases: [/api/v1/photos/my-list]
+  - id: BUILD-001
+    priority: P2
+    area: build
+    summary: HomeService compiles with a deprecated API warning.
 
-  - method: GET
-    path: /api/v1/photos/{id}
-    authentication: false
+  - id: SEC-001
+    priority: P2
+    area: spring_security
+    summary: Startup still creates an unused development in-memory user and logs a generated password.
+    impact: JWT routes use the custom filter chain, but the unused default authentication bean should be removed before production hardening.
 
-  - method: PUT
-    path: /api/v1/photos/{id}
-    authentication: true
+  - id: ORM-001
+    priority: P3
+    area: mybatis_plus
+    summary: PhotoTagRelation has a composite primary key but no TableId, producing startup warnings.
+    impact: Wrapper-based operations work; ById APIs must not be used for this entity.
 
-  - method: DELETE
-    path: /api/v1/photos/{id}
-    authentication: true
-
-  - method: POST
-    path: /api/v1/photos
-    authentication: true
-    content_type: multipart/form-data
-    aliases: [/api/v1/photos/upload]
-
-  - method: GET
-    path: /api/v1/categories
-    authentication: false
-    aliases: [/api/v1/categories/list]
-
-known_issues: []
+recommended_priorities:
+  - order: 1
+    scope: Fix AUTH-001, AUTH-002 and AUTH-003 together, then re-verify login, refresh rotation, reuse detection, logout and lock policy.
+  - order: 2
+    scope: Repair V5 category seeding with a new append-only migration; restore valid seed media or stop returning nonexistent URLs; map missing static resources to 404.
+  - order: 3
+    scope: Validate upload and moderation write flows with isolated acceptance data, including file cleanup behavior.
+  - order: 4
+    scope: Address N+1 queries, hot-tags memory aggregation, environment portability and ORM/build warnings before scale work.

@@ -2,6 +2,8 @@
 
 模块化单体 Spring Boot 服务，提供用户认证、作品上传管理与分类查询能力。
 
+> 接管状态（2026-08-12）：后端可启动，MySQL/Flyway/健康检查正常，公开读接口与 accessToken 鉴权可联调；refresh 旋转/真实注销、登录失败锁定、V5 种子媒体仍有阻塞缺陷。完整可联调边界与证据见 [handoff/backend_status.yaml](handoff/backend_status.yaml)，前端不得把设计说明当作已验收行为。
+
 ## 技术栈
 
 - Java 17 / Spring Boot 3.5.x
@@ -19,7 +21,7 @@
 | `user` | 用户资料与公开主页 |
 | `photo` | 作品、分类、标签、上传 |
 | `interaction` | 互动域占位（暂无接口） |
-| `moderation` | 审核域占位（暂无接口） |
+| `moderation` | 管理员审核、驳回与下架 |
 | `common` | 统一响应、异常、配置 |
 
 ## 快速启动
@@ -107,6 +109,8 @@ mvn spring-boot:run
 - 完整说明见：[docs/home-module.md](docs/home-module.md)
 
 上传表单字段（兼容旧客户端）：`file`、`title`、`description`、`location`、`category`、`tag`
+
+前端接入请使用：[docs/frontend-api-contract.md](docs/frontend-api-contract.md)。该文档同时标注当前可联调范围与已知阻塞问题；真实契约仍以后端实现和运行中的 `/v3/api-docs` 为准。
 
 ## 文档与健康检查
 

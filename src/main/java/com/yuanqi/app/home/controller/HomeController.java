@@ -15,6 +15,7 @@ import org.springframework.web.bind.annotation.ModelAttribute;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import org.springdoc.core.annotations.ParameterObject;
 
 import java.util.List;
 
@@ -34,7 +35,7 @@ public class HomeController {
 
     @Operation(summary = "发现流 Feed", description = "仅返回已发布作品卡片")
     @GetMapping("/feed")
-    public Result<IPage<PhotoCardVO>> feed(@Valid @ModelAttribute HomeFeedRequest request) {
+    public Result<IPage<PhotoCardVO>> feed(@Valid @ParameterObject @ModelAttribute HomeFeedRequest request) {
         return Result.success(homeService.feed(request));
     }
 

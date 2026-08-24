@@ -8,6 +8,7 @@ import com.yuanqi.app.moderation.service.ModerationService;
 import com.yuanqi.app.photo.vo.PhotoCardVO;
 import com.yuanqi.app.photo.vo.PhotoDetailVO;
 import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -22,6 +23,7 @@ import org.springframework.web.bind.annotation.RestController;
  * 内容审核接口（管理员）。
  */
 @Tag(name = "6. 内容审核", description = "作品审核通过、驳回与下架")
+@SecurityRequirement(name = "Authorization")
 @RestController
 @RequestMapping("/api/v1/moderation/photos")
 public class ModerationController {

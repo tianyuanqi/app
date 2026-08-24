@@ -7,6 +7,7 @@ import com.yuanqi.app.auth.vo.LoginVO;
 import com.yuanqi.app.common.api.Result;
 import com.yuanqi.app.common.context.UserContext;
 import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
@@ -48,7 +49,11 @@ public class AuthController {
         return Result.success(authService.refresh(request, ClientInfo.ip(httpRequest), ClientInfo.userAgent(httpRequest)));
     }
 
-    @Operation(summary = "退出登录", description = "吊销请求体中的 refresh 会话；需同时携带有效 access")
+    @Operation(
+            summary = "退出登录",
+            description = "吊销请求体中的 refresh 会话；需同时携带有效 access",
+            security = @SecurityRequirement(name = "Authorization")
+    )
     @PostMapping("/logout")
     public Result<Void> logout(@Valid @RequestBody AuthRequests.Logout request, HttpServletRequest httpRequest) {
         authService.logout(request, UserContext.getUserId(), ClientInfo.ip(httpRequest), ClientInfo.userAgent(httpRequest));

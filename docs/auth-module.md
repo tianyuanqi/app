@@ -4,6 +4,8 @@
 > 包路径：`com.yuanqi.app.auth` + 关联 `com.yuanqi.app.user`  
 > 更新说明：将 Demo 级无状态双 JWT，升级为可吊销会话 + 登录风控 + 审计的公司常见账号形态。
 
+> 接管验收提示（2026-08-12）：本文第 5 节描述的是目标设计。当前 refresh JWT 的 `jti` 与 `auth_session.jti` 不一致，导致新 refresh 立即返回 `40102`；logout 可能返回成功但未吊销会话；失败锁定与 refresh 复用处置存在事务回滚风险。修复和复验前，前端只可使用 accessToken 已验证范围，详见 `handoff/backend_status.yaml`。
+
 ---
 
 ## 1. 模块目标

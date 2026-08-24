@@ -8,6 +8,7 @@ import com.yuanqi.app.photo.service.PhotoService;
 import com.yuanqi.app.photo.vo.PhotoCardVO;
 import com.yuanqi.app.photo.vo.PhotoDetailVO;
 import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import org.springframework.http.MediaType;
@@ -21,6 +22,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import org.springdoc.core.annotations.ParameterObject;
 
 /**
  * 作品接口：公开列表仅已发布；上传默认待审。
@@ -38,11 +40,15 @@ public class PhotoController {
 
     @Operation(summary = "分页搜索已发布作品", description = "返回轻量 PhotoCardVO")
     @GetMapping({"", "/list"})
-    public Result<IPage<PhotoCardVO>> search(@Valid @ModelAttribute PhotoRequests.Search request) {
+    public Result<IPage<PhotoCardVO>> search(@Valid @ParameterObject @ModelAttribute PhotoRequests.Search request) {
         return Result.success(photoService.search(request));
     }
 
-    @Operation(summary = "分页获取当前用户作品", description = "可按 status 筛选，默认全部状态")
+    @Operation(
+            summary = "分页获取当前用户作品",
+            description = "可按 status 筛选，默认全部状态",
+            security = @SecurityRequirement(name = "Authorization")
+    )
     @GetMapping({"/mine", "/my-list"})
     public Result<IPage<PhotoCardVO>> getMyPhotoList(
             @RequestParam(defaultValue = "1") Integer current,
@@ -57,27 +63,35 @@ public class PhotoController {
         return Result.success(photoService.getDetail(id, UserContext.getUserId()));
     }
 
-    @Operation(summary = "编辑作品")
+    @Operation(summary = "编辑作品", security = @SecurityRequirement(name = "Authorization"))
     @PutMapping("/{id}")
     public Result<PhotoDetailVO> update(@PathVariable Long id,
                                         @Valid @RequestBody PhotoRequests.Update request) {
         return Result.success(photoService.update(id, UserContext.getUserId(), request));
     }
 
-    @Operation(summary = "删除作品")
+    @Operation(summary = "删除作品", security = @SecurityRequirement(name = "Authorization"))
     @DeleteMapping("/{id}")
     public Result<Void> delete(@PathVariable Long id) {
         photoService.delete(id, UserContext.getUserId());
         return Result.success(null);
     }
 
-    @Operation(summary = "提交审核", description = "草稿或驳回作品可提交为 PENDING")
+    @Operation(
+            summary = "提交审核",
+            description = "草稿或驳回作品可提交为 PENDING",
+            security = @SecurityRequirement(name = "Authorization")
+    )
     @PostMapping("/{id}/submit")
     public Result<PhotoDetailVO> submit(@PathVariable Long id) {
         return Result.success(photoService.submit(id, UserContext.getUserId()));
     }
 
-    @Operation(summary = "上传单张照片", description = "上传后默认为 PENDING，需审核通过后进入首页")
+    @Operation(
+            summary = "上传单张照片",
+            description = "上传后默认为 PENDING，需审核通过后进入首页",
+            security = @SecurityRequirement(name = "Authorization")
+    )
     @PostMapping(value = {"", "/upload"}, consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public Result<PhotoDetailVO> upload(@Valid @ModelAttribute PhotoRequests.Upload request) {
         return Result.success(photoService.upload(request, UserContext.getUserId()));
