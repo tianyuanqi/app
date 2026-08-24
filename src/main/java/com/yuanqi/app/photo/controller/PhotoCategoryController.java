@@ -1,8 +1,7 @@
 package com.yuanqi.app.photo.controller;
 
 import com.yuanqi.app.common.api.Result;
-import com.yuanqi.app.photo.service.PhotoCategoryService;
-import com.yuanqi.app.photo.vo.CategoryVO;
+import com.yuanqi.app.photo.mapper.PhotoCategoryMapper;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -11,23 +10,13 @@ import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
 
-/**
- * 分类接口：统一返回 Result + CategoryVO。
- */
-@Tag(name = "4. 照片分类", description = "分类查询")
-@RestController
-@RequestMapping("/api/v1/categories")
+@Tag(name="分类") @RestController @RequestMapping("/api/v1/categories")
 public class PhotoCategoryController {
-
-    private final PhotoCategoryService categoryService;
-
-    public PhotoCategoryController(PhotoCategoryService categoryService) {
-        this.categoryService = categoryService;
-    }
-
-    @Operation(summary = "获取照片分类列表")
-    @GetMapping({"", "/list"})
-    public Result<List<CategoryVO>> list() {
-        return Result.success(categoryService.listAll());
-    }
+    private final PhotoCategoryMapper mapper;
+    public PhotoCategoryController(PhotoCategoryMapper mapper){this.mapper=mapper;}
+    @Operation(summary="分类列表；停用但仍被公开作品引用的分类保持可筛选")
+    @GetMapping public Result<List<CategoryView>> list(){return Result.success(mapper.listViews().stream().map(m->new CategoryView(
+            String.valueOf(m.get("publicId")),String.valueOf(m.get("name")),bool(m.get("selectable")),bool(m.get("filterable")))).toList());}
+    private boolean bool(Object v){return v instanceof Boolean b?b:v instanceof Number n&&n.intValue()!=0;}
+    public record CategoryView(String categoryId,String name,boolean selectable,boolean filterable){}
 }

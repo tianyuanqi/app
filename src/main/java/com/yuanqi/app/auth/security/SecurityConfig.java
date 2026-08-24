@@ -60,6 +60,8 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.GET, "/api/v1/photos/mine", "/api/v1/photos/my-list").authenticated()
                         .requestMatchers(HttpMethod.POST, "/api/v1/photos/*/submit").authenticated()
                         .requestMatchers(HttpMethod.GET, "/api/v1/photos", "/api/v1/photos/list", "/api/v1/photos/*").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/v1/photos/*/comments", "/api/v1/photos/*/comments/*/replies").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/v1/media/*/web").permitAll()
                         .requestMatchers(HttpMethod.POST, "/api/v1/photos", "/api/v1/photos/upload").authenticated()
                         .requestMatchers(HttpMethod.PUT, "/api/v1/photos/**").authenticated()
                         .requestMatchers(HttpMethod.DELETE, "/api/v1/photos/**").authenticated()

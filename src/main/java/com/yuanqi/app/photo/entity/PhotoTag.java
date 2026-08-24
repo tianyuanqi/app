@@ -21,5 +21,11 @@ public class PhotoTag {
     @TableId(type = IdType.AUTO)
     private Long id;
 
-    private String name;
+    private String tagId;
+    private String displayName;
+    private String normalizedName;
+    private java.time.LocalDateTime createdAt;
+
+    @Deprecated public String getName() { return displayName; }
+    @Deprecated public void setName(String name) { this.displayName = name; }
 }

@@ -1,6 +1,7 @@
 CREATE TABLE media_asset (
     id BIGINT NOT NULL AUTO_INCREMENT,
     media_id VARCHAR(32) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+    client_upload_id CHAR(36) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
     owner_account_id BIGINT NOT NULL,
     purpose VARCHAR(16) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
     original_storage_key VARCHAR(512) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NULL,
@@ -20,10 +21,25 @@ CREATE TABLE media_asset (
     updated_at DATETIME(6) NOT NULL,
     PRIMARY KEY (id),
     UNIQUE KEY uk_media_asset_public_id (media_id),
+    UNIQUE KEY uk_media_owner_client_upload (owner_account_id, client_upload_id),
     KEY idx_media_owner_status (owner_account_id, status, created_at),
     CONSTRAINT fk_media_owner FOREIGN KEY (owner_account_id) REFERENCES user_account(id),
     CONSTRAINT chk_media_purpose CHECK (purpose IN ('PHOTO','AVATAR')),
     CONSTRAINT chk_media_status CHECK (status IN ('PROCESSING','READY','FAILED','DELETE_PENDING','DELETED'))
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+CREATE TABLE media_processing_attempt (
+    id BIGINT NOT NULL AUTO_INCREMENT,
+    media_id BIGINT NOT NULL,
+    attempt_number INT NOT NULL,
+    status VARCHAR(16) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+    started_at DATETIME(6) NULL,
+    completed_at DATETIME(6) NULL,
+    failure_category VARCHAR(32) CHARACTER SET ascii COLLATE ascii_bin NULL,
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_media_processing_attempt (media_id, attempt_number),
+    CONSTRAINT fk_processing_attempt_media FOREIGN KEY (media_id) REFERENCES media_asset(id) ON DELETE CASCADE,
+    CONSTRAINT chk_processing_attempt_status CHECK (status IN ('PENDING','RUNNING','SUCCEEDED','FAILED'))
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
 ALTER TABLE user_profile
