@@ -10,8 +10,8 @@ public final class ProfileRequests {
     }
 
     @Schema(name = "UpdateProfileRequest")
-    public record Update(@Size(max = 128) String username,
-                         @Size(max = 1000) String bio,
+    public record Update(@Size(min = 1, max = 20) String username,
+                         @Size(max = 200) String bio,
                          LocalDate birthDate,
                          String gender) {
     }

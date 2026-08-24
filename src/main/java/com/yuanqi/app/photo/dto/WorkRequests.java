@@ -1,6 +1,7 @@
 package com.yuanqi.app.photo.dto;
 
 import io.swagger.v3.oas.annotations.media.Schema;
+import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 
 import java.util.List;
@@ -10,11 +11,11 @@ public final class WorkRequests {
     }
 
     @Schema(name = "WorkDraftRequest")
-    public record Draft(@Size(max = 512) String title,
-                        @Size(max = 20000) String description,
-                        @Size(max = 512) String location,
+    public record Draft(@Size(max = 100) String title,
+                        @Size(max = 5000) String description,
+                        @Size(max = 100) String location,
                         String categoryId,
-                        List<@Size(max = 128) String> tags,
-                        List<String> mediaIds) {
+                        @Size(max = 5) List<@Size(min = 1, max = 20) String> tags,
+                        @NotNull @Size(min = 1, max = 9) List<String> mediaIds) {
     }
 }

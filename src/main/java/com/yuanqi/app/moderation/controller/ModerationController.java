@@ -64,9 +64,10 @@ public class ModerationController {
 
     @Operation(summary = "读取待审目标；普通草稿统一 404")
     @GetMapping("/{workId}/revisions/{revisionId}")
-    public Result<ModerationViews.Target> target(@PathVariable String workId,
-                                                 @PathVariable String revisionId) {
-        return Result.success(service.target(UserContext.getUserId(), workId, revisionId));
+    public ResponseEntity<Result<ModerationViews.Target>> target(@PathVariable String workId,
+                                                                 @PathVariable String revisionId) {
+        ModerationViews.Target view = service.target(UserContext.getUserId(), workId, revisionId);
+        return ResponseEntity.ok().header(HttpHeaders.ETAG, view.versionTag()).body(Result.success(view));
     }
 
     @Operation(summary = "审核历史")

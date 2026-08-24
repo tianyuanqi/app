@@ -20,7 +20,7 @@ public final class AuthRequests {
     public record Register(
             @NotBlank @Size(max = 32) String flowId,
             @NotBlank @Email @Size(max = 320) String email,
-            @NotBlank @Size(max = 256) String password,
+            @NotBlank @Size(min = 8, max = 64) String password,
             @NotBlank @Pattern(regexp = "^[0-9]{6}$") String verificationCode,
             @jakarta.validation.constraints.NotNull UUID registrationAttemptId) {
     }
@@ -28,6 +28,6 @@ public final class AuthRequests {
     @Schema(name = "LoginRequest")
     public record Login(
             @NotBlank @Email @Size(max = 320) String email,
-            @NotBlank @Size(max = 256) String password) {
+            @NotBlank @Size(min = 8, max = 64) String password) {
     }
 }

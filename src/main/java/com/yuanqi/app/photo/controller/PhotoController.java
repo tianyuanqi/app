@@ -47,7 +47,7 @@ public class PhotoController {
         return response(service.authorView(UserContext.getUserId(), workId));
     }
     @Operation(summary="我的作品") @GetMapping("/mine") public Result<PageResult<WorkViews.Summary>> mine(@org.springframework.web.bind.annotation.RequestParam(defaultValue="1")int page,@org.springframework.web.bind.annotation.RequestParam(defaultValue="20")int pageSize){return Result.success(service.mine(UserContext.getUserId(),page,pageSize));}
-    @Operation(summary="读取当前工作版本") @GetMapping("/{workId}/draft") public Result<WorkViews.Revision> draft(@PathVariable String workId){return Result.success(service.draft(UserContext.getUserId(),workId));}
+    @Operation(summary="读取当前工作版本") @GetMapping("/{workId}/draft") public ResponseEntity<Result<WorkViews.Revision>> draft(@PathVariable String workId){WorkViews.AuthorWork view=service.authorView(UserContext.getUserId(),workId);if(view.workingRevision()==null)throw new com.yuanqi.app.common.exception.BusinessException(com.yuanqi.app.common.api.ErrorCode.RESOURCE_NOT_FOUND);return ResponseEntity.ok().header(HttpHeaders.ETAG,view.summary().versionTag()).body(Result.success(view.workingRevision()));}
 
     @Operation(summary = "创建或恢复可编辑草稿")
     @PostMapping("/{workId}/draft")

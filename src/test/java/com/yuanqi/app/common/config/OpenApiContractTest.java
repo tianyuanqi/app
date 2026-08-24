@@ -2,6 +2,7 @@ package com.yuanqi.app.common.config;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.yuanqi.app.common.api.ErrorCode;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
@@ -10,7 +11,9 @@ import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -40,6 +43,74 @@ class OpenApiContractTest {
                 .doesNotContain("SELF_REVIEW_NOT_ALLOWED", "SELF_INTERACTION_NOT_ALLOWED");
     }
 
+    @Test void 五十一个Operation全部使用逐状态受限ErrorCodeSchema() throws Exception {
+        JsonNode root = openApi();
+        int operations = 0;
+        int errorResponses = 0;
+        Set<String> refs = new HashSet<>();
+        for (var paths = root.path("paths").fields(); paths.hasNext();) {
+            var path = paths.next();
+            for (var methods = path.getValue().fields(); methods.hasNext();) {
+                var method = methods.next();
+                if (!Set.of("get", "post", "put", "delete", "patch").contains(method.getKey())) continue;
+                operations++;
+                for (var responses = method.getValue().path("responses").fields(); responses.hasNext();) {
+                    var response = responses.next();
+                    if (!response.getKey().matches("[45][0-9]{2}")) continue;
+                    errorResponses++;
+                    String ref = response.getValue().at("/content/application~1json/schema/$ref").asText();
+                    assertThat(ref).as("%s %s -> %s", method.getKey(), path.getKey(), response.getKey())
+                            .startsWith("#/components/schemas/ErrorResult_");
+                    assertThat(refs.add(ref)).as("每个 Operation/status 应使用独立 Schema: %s", ref).isTrue();
+                    JsonNode enums = root.at(ref.substring(1) + "/properties/code/enum");
+                    assertThat(enums.isArray()).isTrue();
+                    assertThat(enums).isNotEmpty();
+                    for (JsonNode value : enums) {
+                        assertThat(ErrorCode.valueOf(value.asText()).getHttpStatus().value())
+                                .isEqualTo(Integer.parseInt(response.getKey()));
+                    }
+                }
+            }
+        }
+        assertThat(operations).isEqualTo(51);
+        assertThat(errorResponses).isEqualTo(refs.size());
+        assertCodes(root, "/api/v1/photos/{workId}/like", "put", "403", "ACCOUNT_UNAVAILABLE");
+        assertCodes(root, "/api/v1/moderation/photos/{workId}/revisions/{revisionId}/approve", "post", "403",
+                "ACCOUNT_UNAVAILABLE", "FORBIDDEN");
+        assertThat(root.at("/paths/~1api~1v1~1auth~1logout/post/responses").has("401")).isFalse();
+    }
+
+    @Test void 关键消费者DTOSchema约束机器可读且无名称碰撞() throws Exception {
+        JsonNode schemas = openApi().at("/components/schemas");
+        assertThat(schemas.has("SendCodeRequest")).isTrue();
+        assertThat(schemas.at("/RegisterRequest/properties/password/minLength").asInt()).isEqualTo(8);
+        assertThat(schemas.at("/RegisterRequest/properties/password/maxLength").asInt()).isEqualTo(64);
+        assertThat(schemas.at("/RegisterRequest/properties/verificationCode/pattern").asText()).isEqualTo("^[0-9]{6}$");
+        assertThat(schemas.at("/UpdateProfileRequest/properties/username/maxLength").asInt()).isEqualTo(20);
+        assertThat(schemas.at("/UpdateProfileRequest/properties/bio/maxLength").asInt()).isEqualTo(200);
+        assertThat(schemas.at("/WorkDraftRequest/properties/title/maxLength").asInt()).isEqualTo(100);
+        assertThat(schemas.at("/WorkDraftRequest/properties/description/maxLength").asInt()).isEqualTo(5000);
+        assertThat(schemas.at("/WorkDraftRequest/properties/location/maxLength").asInt()).isEqualTo(100);
+        assertThat(schemas.at("/WorkDraftRequest/properties/tags/maxItems").asInt()).isEqualTo(5);
+        assertThat(schemas.at("/WorkDraftRequest/properties/tags/items/maxLength").asInt()).isEqualTo(20);
+        assertThat(schemas.at("/WorkDraftRequest/properties/mediaIds/minItems").asInt()).isEqualTo(1);
+        assertThat(schemas.at("/WorkDraftRequest/properties/mediaIds/maxItems").asInt()).isEqualTo(9);
+        assertThat(schemas.at("/Comment/properties/content/maxLength").asInt()).isEqualTo(1000);
+    }
+
+    private JsonNode openApi() throws Exception {
+        return mapper.readTree(mockMvc.perform(get("/v3/api-docs"))
+                .andExpect(status().isOk()).andReturn().getResponse().getContentAsByteArray());
+    }
+
+    private void assertCodes(JsonNode root, String path, String method, String status, String... expected) {
+        String ref = root.path("paths").path(path).path(method).path("responses").path(status)
+                .at("/content/application~1json/schema/$ref").asText();
+        List<String> actual = new ArrayList<>();
+        root.at(ref.substring(1) + "/properties/code/enum").forEach(value -> actual.add(value.asText()));
+        assertThat(actual).containsExactlyInAnyOrder(expected);
+    }
+
     private void assertEtagRead(JsonNode root, String path) {
         JsonNode operation = root.path("paths").path(path).path("get");
         assertThat(operation.isMissingNode()).isFalse();
@@ -54,6 +125,10 @@ class OpenApiContractTest {
         List<String> parameters = new ArrayList<>();
         operation.path("parameters").forEach(value -> parameters.add(value.path("name").asText()));
         assertThat(parameters).contains("If-Match", "Idempotency-Key");
+        operation.path("parameters").forEach(value -> {
+            if (Set.of("If-Match", "Idempotency-Key").contains(value.path("name").asText()))
+                assertThat(value.path("required").asBoolean()).isTrue();
+        });
         assertThat(operation.path("responses").fieldNames())
                 .toIterable().contains("400", "409", "412", "428", "500", "503");
         assertThat(operation.at("/responses/200/headers/ETag").isMissingNode()).isFalse();
