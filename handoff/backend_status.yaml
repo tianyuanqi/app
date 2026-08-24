@@ -1,7 +1,7 @@
 status: development_incomplete
 as_of: "2026-08-24"
 phase: v1_backend_development
-work_package: V1-BE-002
+work_package: V1-BE-003
 release: 2400px-v1.0
 requirements_baseline: v1.0-REQ-R4
 human_gate_3: Passed
@@ -10,7 +10,7 @@ repository:
   path: /Users/yuanqi/2400px/app
   branch: codex/v1-backend
   source_commit: e80f9257e7213d5bebac29bfd170b067563f010a
-  current_commit_before_handoff_update: a1c3ed981953b6ea2a6ee0b2311391432155480c
+  current_commit_before_handoff_update: b929cfa
   remote_modified: false
   pushed: false
   pull_request_created: false
@@ -30,7 +30,7 @@ environment:
   spring_boot: 3.5.16
   runtime_profile: test
   isolated_development_schema: px2400_v1_dev
-  isolated_test_schema: px2400_v1_p0_final2_20260824
+  isolated_test_schema: px2400_v1_be003_final_20260824
   flyway_schema_version: 14
 
 implementation_slices:
@@ -50,12 +50,14 @@ implementation_slices:
     scope: OpenAPI ETag Header 字符串 Schema
   - commit: a1c3ed9
     scope: 幂等并发等待上限与匿名验证码主体归一化
+  - commit: b929cfa
+    scope: 逐 Operation 受限 ErrorCode/DTO Schema 与认证、状态机、ETag、分页、防枚举集成矩阵
 
 runtime_contract:
   authority: http://127.0.0.1:8080/v3/api-docs
-  evidence_file: /private/tmp/2400px-v1-p0-openapi-a1c3ed9.json
-  sha256: 43a98e6f12504c86072e3b7d675abc005631737de98d1edbd9ef852e061baeea
-  bytes: 91575
+  evidence_file: /private/tmp/2400px-v1-be003-openapi-b929cfa.json
+  sha256: 3b9c3c6537302eaf2aa56a19945c53f5cfe50dd8719c98f0e0548c4a3f9f6778
+  bytes: 329055
   paths: 40
   operations: 51
   api_prefix: /api/v1
@@ -67,7 +69,7 @@ verification:
   clean_verify:
     command: ./mvnw clean verify
     result: passed
-    tests_run: 17
+    tests_run: 26
     failures: 0
     errors: 0
     skipped: 0
@@ -78,16 +80,17 @@ verification:
     - { suite: UnicodeTextTest, count: 4, result: passed }
     - { suite: IdempotencyServiceTest, count: 3, result: passed }
     - { suite: StrongEtagTest, count: 2, result: passed }
-    - { suite: OpenApiContractTest, count: 1, result: passed }
+    - { suite: OpenApiContractTest, count: 3, result: passed }
     - { suite: AdminContractSecurityTest, count: 2, result: passed }
+    - { suite: BackendP0IntegrationMatrixTest, count: 7, result: passed }
   fresh_database:
     result: passed
-    schema: px2400_v1_p0_final2_20260824
+    schema: px2400_v1_be003_final_20260824
     migrations: V1-V14
     note: 该 Schema 从空状态一次性成功应用 V1～V14；没有复用失败后修改的 Schema。
   runtime_startup:
     result: passed
-    schema: px2400_v1_p0_final2_20260824
+    schema: px2400_v1_be003_final_20260824
     migrations_validated: 14
   health_check:
     result: passed
@@ -96,6 +99,22 @@ verification:
   openapi_export:
     result: passed
     hash_recorded: true
+    operation_error_schemas: 336
+    non_restricted_4xx_5xx_responses: 0
+    if_match_headers_not_required: 0
+    idempotency_headers_not_required: 0
+    etag_success_responses: 24
+    result_schemas: 30
+
+integration_matrix:
+  - { invariant: Session 签发、解析、固定期限、Refresh 旋转与 Logout 幂等, test: BackendP0IntegrationMatrixTest.Session签发解析旋转退出形成完整闭环 }
+  - { invariant: Refresh 重放吊销整个 Session, test: BackendP0IntegrationMatrixTest.Refresh重放吊销整个Session且旧凭证不可恢复 }
+  - { invariant: 草稿、提交、撤回、驳回重提、自审、公开版本原子替换与 ETag 递增, test: BackendP0IntegrationMatrixTest.作品审核状态机公开版本替换与每次Mutation强ETag递增 }
+  - { invariant: 真实 HTTP Mutation 返回新 ETag 且旧 If-Match 返回 412, test: BackendP0IntegrationMatrixTest.真实HTTPMutation返回新ETag且旧条件版本失败 }
+  - { invariant: 所有权和非待审目标统一 RESOURCE_NOT_FOUND, test: BackendP0IntegrationMatrixTest.所有权防枚举与目标状态校验统一RESOURCE_NOT_FOUND }
+  - { invariant: 我的作品页码分页稳定且无跨页重复, test: BackendP0IntegrationMatrixTest.我的作品稳定分页使用更新时间与公开ID确定性排序 }
+  - { invariant: 审核队列同时间使用 revisionId 稳定排序, test: BackendP0IntegrationMatrixTest.审核队列同提交时间按Revision公开ID稳定排序 }
+  - { invariant: 未认证及普通用户先于资源和 ETag 校验失败, test: AdminContractSecurityTest }
 
 implemented_capabilities:
   authentication:
@@ -124,9 +143,9 @@ implemented_capabilities:
 
 integration_readiness:
   backend_overall_ready: false
-  frontend_can_integrate: false
-  tester_can_accept: false
-  reason: 通用幂等与 ADR 0006 已闭环，但逐 Operation 精确 ErrorCode Schema 和完整领域验收矩阵仍未达到 V1-BE-GAP-002/003 的全部验收标准。
+  frontend_can_integrate: true
+  tester_can_accept: true
+  reason: V1-BE-GAP-001～003 与 ADR 0006 已闭环，P0 目标契约和可重复集成矩阵具备运行时证据；整体开发仍因明确保留的 P1/P2 未完成而不是 release-ready。
 
 adr_0006:
   status: closed
@@ -143,13 +162,13 @@ p0_closure:
     status: closed
     evidence: 目标 Mutation 已接入事务内持久化；覆盖合法性、24 小时或验证码 10 分钟保留、同载荷重放、异载荷冲突、并发唯一性、最多等待 10 秒以及 ETag/Location 重放。
   V1-BE-GAP-002:
-    status: partially_closed
-    evidence: 已发布闭合顶层 ErrorCode、通用 ErrorResult、成功泛型 Schema、认证、Idempotency-Key、If-Match、ETag 及通用错误响应。
-    remaining: 当前 OpenAPI 使用按 Header/权限推导的通用错误响应；尚未把最终差异包中的逐 Operation ErrorCode 子集物化为各响应的受限 Schema，部分 DTO Validation 仍只有宽松上限。
+    status: closed
+    evidence: 51 个 Operation 由显式注册表逐项覆盖；336 个 4xx/5xx 响应各自引用 Operation/status 独立 ErrorResult Schema，机器检查无全局宽泛 ErrorCode 引用；认证、必需 Header、ETag 与关键 DTO Validation 已进入运行时 OpenAPI。
+    remaining: 无 P0 剩余项。
   V1-BE-GAP-003:
-    status: partially_closed
-    evidence: 测试从 9 增至 17，新增幂等重放/冲突/并发、强 ETag 三类失败、管理权限顺序、ADR 0006 OpenAPI 和空库 V1～V14。
-    remaining: 认证 Session 全链、全部作品/审核状态机、Mutation 后 ETag 变化、稳定分页和防枚举的完整集成矩阵尚未实现。
+    status: closed
+    evidence: BackendP0IntegrationMatrixTest 以 7 个可回滚测试覆盖 Session 签发/解析/旋转/重放/退出、草稿/提交/撤回/驳回重提/两次批准及公开版本替换、真实 HTTP Mutation ETag 与旧版本 412、两类稳定分页、所有权与审核目标防枚举；AdminContractSecurityTest 覆盖认证和角色优先顺序。
+    remaining: 无 P0 剩余项。
 
 blocking_gaps:
   - id: V1-BE-GAP-001
@@ -159,11 +178,11 @@ blocking_gaps:
   - id: V1-BE-GAP-002
     priority: P0
     area: contract
-    summary: 部分关闭；通用 Schema 和 Header 已发布，但逐 Operation ErrorCode 受限 Schema 与部分 DTO Validation 尚未闭合。
+    summary: 已关闭；保留本条用于审计索引。
   - id: V1-BE-GAP-003
     priority: P0
     area: testability
-    summary: 部分关闭；当前 17 个测试已覆盖 P0 协议核心，但完整认证、状态机、分页和防枚举集成矩阵仍缺失。
+    summary: 已关闭；保留本条用于审计索引。
   - id: V1-BE-GAP-004
     priority: P1
     area: exif
@@ -197,6 +216,6 @@ database_safety:
   production_profile_sample_business_data_added: false
 
 handoff_conclusion:
-  result: blocked
-  summary: V1-BE-GAP-001 与 ADR 0006 已关闭，空库 V1～V14、17 个测试、健康检查和运行时 OpenAPI 均有证据；V1-BE-GAP-002/003 仍为部分关闭，因此不能标记完整真实联调或 READY_FOR_TEST。
-  required_next_action: 下一顺序工作包应只继续闭合逐 Operation ErrorCode/DTO Schema 与认证、状态机、分页、防枚举集成矩阵；P1/P2 保持不变。
+  result: pass_with_findings
+  summary: V1-BE-GAP-001～003 与 ADR 0006 全部关闭；空库 V1～V14、26 个测试、健康检查和 Commit b929cfa 的运行时 OpenAPI 均有可复核证据，Frontend 与 Tester 可进入 P0 契约联调/验收。Backend 整体仍因 P1/P2 未完成保持 development_incomplete。
+  required_next_action: 按 Coordinator 的后续顺序工作包处理 V1-BE-GAP-004～009；本任务未修改其状态或范围。
