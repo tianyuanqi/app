@@ -8,6 +8,7 @@ import com.yuanqi.app.auth.service.AuthService;
 import com.yuanqi.app.auth.service.AuthSessionService;
 import com.yuanqi.app.auth.service.VerificationService;
 import com.yuanqi.app.auth.support.ClientInfo;
+import com.yuanqi.app.auth.support.EmailNormalizer;
 import com.yuanqi.app.auth.vo.AuthViews;
 import com.yuanqi.app.common.api.ErrorCode;
 import com.yuanqi.app.common.api.Result;
@@ -37,10 +38,12 @@ public class AuthController {
     private final CsrfTokenService csrfTokens;
     private final OriginGuard originGuard;
     private final IdempotencyService idempotency;
+    private final EmailNormalizer emails;
 
     public AuthController(AuthService authService, VerificationService verificationService,
                           AuthSessionService sessionService, AuthCookieService cookies,
-                          CsrfTokenService csrfTokens, OriginGuard originGuard, IdempotencyService idempotency) {
+                          CsrfTokenService csrfTokens, OriginGuard originGuard, IdempotencyService idempotency,
+                          EmailNormalizer emails) {
         this.authService = authService;
         this.verificationService = verificationService;
         this.sessionService = sessionService;
@@ -48,6 +51,7 @@ public class AuthController {
         this.csrfTokens = csrfTokens;
         this.originGuard = originGuard;
         this.idempotency = idempotency;
+        this.emails = emails;
     }
 
     @Operation(summary = "发送注册邮箱验证码")
@@ -57,9 +61,10 @@ public class AuthController {
             @Valid @RequestBody AuthRequests.SendCode request, HttpServletRequest http) {
         originGuard.requireTrusted(http);
         String ip = ClientInfo.ip(http);
-        return idempotency.execute("verification:" + IdempotencyService.sha256(request.email() + "\n" + ip),
+        String emailKey = emails.normalize(request.email());
+        return idempotency.execute("verification:" + IdempotencyService.sha256(emailKey + "\n" + ip),
                 "POST", "/api/v1/auth/verification-codes", key,
-                java.util.Map.of("email", request.email()), AuthViews.VerificationFlowView.class,
+                java.util.Map.of("email", emailKey), AuthViews.VerificationFlowView.class,
                 java.time.Duration.ofMinutes(10),
                 () -> ResponseEntity.ok(Result.success(verificationService.sendCode(request.email(), ip)))).getBody();
     }

@@ -9,6 +9,7 @@ import com.yuanqi.app.common.api.ErrorCode;
 import com.yuanqi.app.common.api.Result;
 import com.yuanqi.app.common.exception.BusinessException;
 import org.springframework.dao.DuplicateKeyException;
+import org.springframework.dao.PessimisticLockingFailureException;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.ResponseEntity;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -60,8 +61,12 @@ public class IdempotencyService {
         LocalDateTime now = LocalDateTime.ofInstant(clock.instant(), ZoneOffset.UTC);
         Stored stored = null;
         try {
+            jdbc.execute("SET SESSION innodb_lock_wait_timeout=10");
             jdbc.update("INSERT INTO idempotency_record(scope_key,request_hash,status,created_at,expires_at) VALUES(?,?,'PROCESSING',?,?)",
                     scope, requestHash, now, now.plus(ttl));
+        } catch (PessimisticLockingFailureException timeout) {
+            throw new BusinessException(ErrorCode.IDEMPOTENCY_IN_PROGRESS,
+                    ErrorCode.IDEMPOTENCY_IN_PROGRESS.getMessage(), true, 1);
         } catch (DuplicateKeyException ignored) {
             stored = findForUpdate(scope);
             if (stored != null && !stored.expiresAt().isAfter(now)) {
