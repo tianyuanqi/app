@@ -10,6 +10,9 @@ import com.yuanqi.app.user.dto.ProfileRequests;
 import com.yuanqi.app.user.entity.UserProfile;
 import com.yuanqi.app.user.mapper.UserProfileMapper;
 import com.yuanqi.app.user.vo.ProfileViews;
+import com.yuanqi.app.photo.mapper.MediaAssetMapper;
+import com.yuanqi.app.photo.entity.MediaAsset;
+import com.yuanqi.app.photo.vo.MediaViews;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -27,11 +30,13 @@ public class ProfileService {
     private final AccountMapper accountMapper;
     private final UserProfileMapper profileMapper;
     private final Clock clock;
+    private final MediaAssetMapper mediaMapper;
 
-    public ProfileService(AccountMapper accountMapper, UserProfileMapper profileMapper, Clock clock) {
+    public ProfileService(AccountMapper accountMapper, UserProfileMapper profileMapper, Clock clock,MediaAssetMapper mediaMapper) {
         this.accountMapper = accountMapper;
         this.profileMapper = profileMapper;
         this.clock = clock;
+        this.mediaMapper=mediaMapper;
     }
 
     @Transactional(readOnly = true)
@@ -68,7 +73,7 @@ public class ProfileService {
         UserProfile profile = requireProfile(account.getId());
         String publicGender = "UNDISCLOSED".equals(profile.getGender()) ? null : profile.getGender();
         return new ProfileViews.PublicProfile(account.getUid(), profile.getUsername(), profile.getBio(),
-                age(profile.getBirthDate()), publicGender, null, account.getCreatedAt().atOffset(ZoneOffset.UTC),
+                age(profile.getBirthDate()), publicGender, avatar(profile), account.getCreatedAt().atOffset(ZoneOffset.UTC),
                 profileMapper.countPublicWorks(account.getId()), profileMapper.countReceivedLikes(account.getId()));
     }
 
@@ -78,7 +83,7 @@ public class ProfileService {
 
     private ProfileViews.PrivateProfile privateView(Account account, UserProfile profile) {
         return new ProfileViews.PrivateProfile(account.getUid(), account.getEmail(), profile.getUsername(),
-                profile.getBio(), profile.getBirthDate(), profile.getGender(), null,
+                profile.getBio(), profile.getBirthDate(), profile.getGender(), avatar(profile),
                 account.getCreatedAt().atOffset(ZoneOffset.UTC), versionTag(profile.getRowVersion()));
     }
 
@@ -137,4 +142,5 @@ public class ProfileService {
     private LocalDateTime nowUtc() {
         return LocalDateTime.ofInstant(clock.instant(), ZoneOffset.UTC);
     }
+    private MediaViews.WebMedia avatar(UserProfile profile){if(profile.getAvatarMediaId()==null)return null;MediaAsset a=mediaMapper.selectById(profile.getAvatarMediaId());if(a==null||!"READY".equals(a.getStatus()))return null;return new MediaViews.WebMedia(a.getMediaId(),"PUBLIC_URL","/api/v1/media/"+a.getMediaId()+"/web",a.getMimeType(),a.getWidth(),a.getHeight(),"\"media-"+a.getRowVersion()+"\"");}
 }

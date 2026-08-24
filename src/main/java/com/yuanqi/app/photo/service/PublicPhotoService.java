@@ -4,9 +4,13 @@ import java.sql.ResultSet;import java.sql.SQLException;import java.time.ZoneOffs
 @Service public class PublicPhotoService{
  private final JdbcTemplate jdbc;public PublicPhotoService(JdbcTemplate j){jdbc=j;}
  @Transactional(readOnly=true) public PageResult<PublicPhotoViews.Card> feed(Long viewer,String keyword,String category,List<String>tagIds,int page){
+  return feed(viewer,keyword,category,tagIds,page,null);
+ }
+ @Transactional(readOnly=true) public PageResult<PublicPhotoViews.Card> feed(Long viewer,String keyword,String category,List<String>tagIds,int page,String authorUid){
   if(page<1)throw new BusinessException(ErrorCode.INVALID_PAGE);List<String> tags=tagIds==null?List.of():tagIds.stream().distinct().toList();if(tags.size()>5)throw new BusinessException(ErrorCode.INVALID_FILTER);
   List<String> terms=keyword==null?List.of():UnicodeText.searchTerms(keyword);if(terms.size()>5)throw new BusinessException(ErrorCode.INVALID_QUERY);
   StringBuilder from=new StringBuilder(" FROM photo_work w JOIN photo_revision r ON r.id=w.public_revision_id JOIN user_account a ON a.id=w.author_account_id JOIN user_profile p ON p.account_id=a.id LEFT JOIN photo_category c ON c.id=r.category_id WHERE w.publication_state='PUBLISHED'");List<Object> args=new ArrayList<>();
+  if(authorUid!=null){from.append(" AND a.uid=?");args.add(authorUid);}
   if(category!=null){from.append(" AND c.public_id=?");args.add(category);}for(String tag:tags){from.append(" AND EXISTS(SELECT 1 FROM revision_tag rt JOIN photo_tag t ON t.id=rt.tag_id WHERE rt.revision_id=r.id AND t.tag_id=?)");args.add(tag);}for(String term:terms){from.append(" AND (r.title LIKE ? OR r.description LIKE ? OR r.location LIKE ? OR p.username LIKE ? OR EXISTS(SELECT 1 FROM revision_tag rt JOIN photo_tag t ON t.id=rt.tag_id WHERE rt.revision_id=r.id AND t.display_name LIKE ?))");String like="%"+term+"%";for(int i=0;i<5;i++)args.add(like);}
   long total=jdbc.queryForObject("SELECT COUNT(*)"+from,Long.class,args.toArray());String select="SELECT w.id internal_work_id,w.work_id,r.title,a.uid,p.username,c.public_id category_id,c.name category_name,c.active,w.published_at,"+
     "(SELECT m.media_id FROM revision_media rm JOIN media_asset m ON m.id=rm.media_id WHERE rm.revision_id=r.id ORDER BY rm.position LIMIT 1) cover_id,"+

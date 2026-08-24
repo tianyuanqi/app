@@ -15,6 +15,8 @@ import com.yuanqi.app.photo.mapper.PhotoRevisionMapper;
 import com.yuanqi.app.photo.mapper.PhotoWorkMapper;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.jdbc.core.JdbcTemplate;
+import com.yuanqi.app.common.api.PageResult;
 
 import java.time.Clock;
 import java.time.LocalDateTime;
@@ -28,13 +30,19 @@ public class ReviewService {
     private final AccountMapper accountMapper;
     private final PublicIdGenerator ids;
     private final Clock clock;
+    private final JdbcTemplate jdbc;
 
     public ReviewService(PhotoWorkMapper workMapper, PhotoRevisionMapper revisionMapper,
                          ModerationEventMapper eventMapper, AccountMapper accountMapper,
-                         PublicIdGenerator ids, Clock clock) {
+                         PublicIdGenerator ids, Clock clock, JdbcTemplate jdbc) {
         this.workMapper = workMapper; this.revisionMapper = revisionMapper; this.eventMapper = eventMapper;
         this.accountMapper = accountMapper; this.ids = ids; this.clock = clock;
+        this.jdbc=jdbc;
     }
+
+    @Transactional(readOnly=true) public PageResult<ModerationViews.TargetSummary> queue(int page,int size){if(page<1)throw new BusinessException(ErrorCode.INVALID_PAGE);if(size<1||size>100)throw new BusinessException(ErrorCode.INVALID_PAGE_SIZE);long total=jdbc.queryForObject("SELECT COUNT(*) FROM photo_revision WHERE state='PENDING'",Long.class);var items=jdbc.query("SELECT w.work_id,r.revision_id,a.uid,r.title,r.submitted_at,w.row_version FROM photo_revision r JOIN photo_work w ON w.working_revision_id=r.id JOIN user_account a ON a.id=w.author_account_id WHERE r.state='PENDING' ORDER BY r.submitted_at,r.revision_id LIMIT ? OFFSET ?",(rs,n)->new ModerationViews.TargetSummary(rs.getString(1),rs.getString(2),rs.getString(3),rs.getString(4),rs.getTimestamp(5).toLocalDateTime().atOffset(ZoneOffset.UTC),"\"work-"+rs.getLong(6)+"\""),size,(page-1)*size);return PageResult.of(items,page,size,total);}
+    @Transactional(readOnly=true) public ModerationViews.Target target(Long reviewer,String workId,String revisionId){var rows=jdbc.query("SELECT w.id,w.work_id,w.author_account_id,w.row_version,r.id,r.revision_id,r.title,r.description,r.location,r.submitted_at,a.uid FROM photo_work w JOIN photo_revision r ON r.id=w.working_revision_id JOIN user_account a ON a.id=w.author_account_id WHERE w.work_id=? AND r.revision_id=? AND r.state='PENDING'",(rs,n)->{long rid=rs.getLong(5);var media=jdbc.queryForList("SELECT m.media_id FROM revision_media rm JOIN media_asset m ON m.id=rm.media_id WHERE rm.revision_id=? ORDER BY rm.position",String.class,rid);return new ModerationViews.Target(rs.getString(2),rs.getString(6),rs.getString(11),rs.getString(7),rs.getString(8),rs.getString(9),media,rs.getTimestamp(10).toLocalDateTime().atOffset(ZoneOffset.UTC),rs.getLong(3)==reviewer,"\"work-"+rs.getLong(4)+"\"");},workId,revisionId);if(rows.isEmpty())throw new BusinessException(ErrorCode.RESOURCE_NOT_FOUND);return rows.get(0);}
+    @Transactional(readOnly=true) public PageResult<ModerationViews.Event> history(String workId,int page,int size){if(page<1)throw new BusinessException(ErrorCode.INVALID_PAGE);if(size<1||size>100)throw new BusinessException(ErrorCode.INVALID_PAGE_SIZE);PhotoWork w=workMapper.findByPublicId(workId);if(w==null)throw new BusinessException(ErrorCode.RESOURCE_NOT_FOUND);long total=jdbc.queryForObject("SELECT COUNT(*) FROM moderation_event WHERE work_id=?",Long.class,w.getId());var rows=jdbc.query("SELECT e.event_id,r.revision_id,e.action,e.previous_state,e.resulting_state,sa.uid,ra.uid,e.reason,e.self_review,e.occurred_at FROM moderation_event e JOIN photo_revision r ON r.id=e.revision_id JOIN user_account sa ON sa.id=e.submitter_account_id LEFT JOIN user_account ra ON ra.id=e.reviewer_account_id WHERE e.work_id=? ORDER BY e.occurred_at DESC,e.event_id DESC LIMIT ? OFFSET ?",(rs,n)->new ModerationViews.Event(rs.getString(1),rs.getString(2),rs.getString(3),rs.getString(4),rs.getString(5),rs.getString(6),rs.getString(7),rs.getString(8),rs.getBoolean(9),rs.getTimestamp(10).toLocalDateTime().atOffset(ZoneOffset.UTC)),w.getId(),size,(page-1)*size);return PageResult.of(rows,page,size,total);}
 
     @Transactional(noRollbackFor = AccountUnavailableAfterReviewLock.class)
     public ModerationViews.Mutation approve(Long reviewerId, String workId, String revisionId, String ifMatch) {

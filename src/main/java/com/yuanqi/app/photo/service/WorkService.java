@@ -21,6 +21,8 @@ import com.yuanqi.app.photo.mapper.RevisionTagMapper;
 import com.yuanqi.app.photo.vo.WorkViews;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.jdbc.core.JdbcTemplate;
+import com.yuanqi.app.common.api.PageResult;
 
 import java.time.Clock;
 import java.time.LocalDateTime;
@@ -41,11 +43,12 @@ public class WorkService {
     private final PhotoCategoryMapper categoryMapper;
     private final PhotoTagMapper tagMapper;
     private final RevisionTagMapper revisionTagMapper;
+    private final JdbcTemplate jdbc;
 
     public WorkService(PhotoWorkMapper workMapper, PhotoRevisionMapper revisionMapper,
                        RevisionMediaMapper revisionMediaMapper, MediaAssetMapper mediaMapper,
                        PublicIdGenerator ids, Clock clock, PhotoCategoryMapper categoryMapper,
-                       PhotoTagMapper tagMapper, RevisionTagMapper revisionTagMapper) {
+                       PhotoTagMapper tagMapper, RevisionTagMapper revisionTagMapper,JdbcTemplate jdbc) {
         this.workMapper = workMapper;
         this.revisionMapper = revisionMapper;
         this.revisionMediaMapper = revisionMediaMapper;
@@ -53,6 +56,7 @@ public class WorkService {
         this.ids = ids;
         this.clock = clock;
         this.categoryMapper = categoryMapper; this.tagMapper = tagMapper; this.revisionTagMapper = revisionTagMapper;
+        this.jdbc=jdbc;
     }
 
     @Transactional
@@ -79,6 +83,8 @@ public class WorkService {
         PhotoWork work = owned(workMapper.findByPublicId(workId), accountId);
         return view(work, revision(work.getPublicRevisionId()), revision(work.getWorkingRevisionId()));
     }
+    @Transactional(readOnly=true) public WorkViews.Revision draft(Long accountId,String workId){PhotoWork w=owned(workMapper.findByPublicId(workId),accountId);PhotoRevision r=revision(w.getWorkingRevisionId());if(r==null)throw new BusinessException(ErrorCode.RESOURCE_NOT_FOUND);return revisionView(r);}
+    @Transactional(readOnly=true) public PageResult<WorkViews.Summary> mine(Long accountId,int page,int size){if(page<1)throw new BusinessException(ErrorCode.INVALID_PAGE);if(size<1||size>100)throw new BusinessException(ErrorCode.INVALID_PAGE_SIZE);long total=jdbc.queryForObject("SELECT COUNT(*) FROM photo_work WHERE author_account_id=?",Long.class,accountId);var works=jdbc.query("SELECT * FROM photo_work WHERE author_account_id=? ORDER BY updated_at DESC,work_id DESC LIMIT ? OFFSET ?",(rs,n)->{PhotoWork w=new PhotoWork();w.setId(rs.getLong("id"));w.setWorkId(rs.getString("work_id"));w.setPublicationState(rs.getString("publication_state"));w.setWorkingRevisionId((Long)rs.getObject("working_revision_id"));w.setPublishedAt(rs.getTimestamp("published_at")==null?null:rs.getTimestamp("published_at").toLocalDateTime());w.setUpdatedAt(rs.getTimestamp("updated_at").toLocalDateTime());w.setRowVersion(rs.getLong("row_version"));PhotoRevision r=revision(w.getWorkingRevisionId());WorkViews.Capabilities c=new WorkViews.Capabilities(r==null,r!=null&&"DRAFT".equals(r.getState()),r!=null&&java.util.Set.of("DRAFT","REJECTED").contains(r.getState()),r!=null&&"PENDING".equals(r.getState()),true);return new WorkViews.Summary(w.getWorkId(),w.getPublicationState(),r==null?null:r.getRevisionId(),r==null?null:r.getState(),utc(w.getPublishedAt()),utc(w.getUpdatedAt()),jdbc.queryForObject("SELECT COUNT(*) FROM photo_like WHERE work_id=?",Long.class,w.getId()),jdbc.queryForObject("SELECT COUNT(*) FROM photo_comment WHERE work_id=? AND display_state='ACTIVE'",Long.class,w.getId()),c,tag(w.getRowVersion()));},accountId,size,(page-1)*size);return PageResult.of(works,page,size,total);}
 
     @Transactional
     public WorkViews.AuthorWork updateDraft(Long accountId, String workId, String ifMatch,

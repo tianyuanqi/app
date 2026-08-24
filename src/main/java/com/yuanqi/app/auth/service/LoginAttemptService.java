@@ -19,8 +19,7 @@ import java.time.ZoneOffset;
 /** 登录失败状态必须在错误响应事务中提交，不能随业务异常回滚。 */
 @Service
 public class LoginAttemptService {
-    private static final String DUMMY_PASSWORD_HASH =
-            "$2a$10$7EqJtq98hPqEX7fNZaFWoO5VfM3pLxXQ7yTqgq3QFvD5hS9D.wK0e";
+    private final String dummyPasswordHash;
     private final AccountMapper accountMapper;
     private final LoginSecurityStateMapper securityMapper;
     private final AuthRateLimiter rateLimiter;
@@ -37,6 +36,7 @@ public class LoginAttemptService {
         this.encoder = encoder;
         this.properties = properties;
         this.clock = clock;
+        this.dummyPasswordHash = encoder.encode("2400px-dummy-password-7Q");
     }
 
     @Transactional(noRollbackFor = BusinessException.class)
@@ -52,7 +52,7 @@ public class LoginAttemptService {
         }
         rateLimiter.checkLogin(emailKey, ip);
         if (account == null) {
-            encoder.matches(password, DUMMY_PASSWORD_HASH);
+            encoder.matches(password, dummyPasswordHash);
             throw new BusinessException(ErrorCode.INVALID_CREDENTIALS);
         }
         if (state == null) {

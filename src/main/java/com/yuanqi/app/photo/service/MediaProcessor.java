@@ -58,9 +58,10 @@ public class MediaProcessor {
             Decoded decoded = decode(staging);
             String originalKey = storage.originalKey(asset.getMediaId(), decoded.extension());
             storage.move(staging, originalKey);
+            asset.setOriginalStorageKey(originalKey);
             String webKey = storage.webKey(asset.getMediaId());
             writeWeb(decoded.image(), webKey);
-            asset.setOriginalStorageKey(originalKey); asset.setWebStorageKey(webKey);
+            asset.setWebStorageKey(webKey);
             asset.setSha256(sha256(originalKey)); asset.setMimeType(decoded.mimeType());
             asset.setWidth(decoded.image().getWidth()); asset.setHeight(decoded.image().getHeight());
             asset.setFrameCount(decoded.frames()); asset.setStatus("READY"); asset.setFailureCode(null);

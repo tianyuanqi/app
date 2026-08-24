@@ -14,9 +14,9 @@ public interface MediaAssetMapper extends BaseMapper<MediaAsset> {
     @Select("SELECT * FROM media_asset WHERE media_id=#{mediaId} LIMIT 1 FOR UPDATE")
     MediaAsset findByPublicIdForUpdate(@Param("mediaId") String mediaId);
 
-    @Select("SELECT COUNT(*)>0 FROM revision_media rm JOIN photo_revision r ON r.id=rm.revision_id " +
-            "JOIN photo_work w ON w.public_revision_id=r.id " +
-            "WHERE rm.media_id=#{mediaId} AND w.publication_state='PUBLISHED'")
+    @Select("SELECT (EXISTS(SELECT 1 FROM revision_media rm JOIN photo_revision r ON r.id=rm.revision_id " +
+            "JOIN photo_work w ON w.public_revision_id=r.id WHERE rm.media_id=#{mediaId} AND w.publication_state='PUBLISHED') " +
+            "OR EXISTS(SELECT 1 FROM user_profile p WHERE p.avatar_media_id=#{mediaId}))")
     boolean isPublicWeb(@Param("mediaId") Long mediaId);
 
     @Select("SELECT COUNT(*)>0 FROM revision_media WHERE media_id=#{mediaId}")

@@ -31,7 +31,7 @@ import java.util.regex.Pattern;
 @RestController
 @RequestMapping("/api/v1/auth")
 public class AuthController {
-    private static final Pattern IDEMPOTENCY_KEY = Pattern.compile("^[A-Za-z0-9._:-]{8,128}$");
+    private static final Pattern IDEMPOTENCY_KEY = Pattern.compile("^[A-Za-z0-9._~-]{16,64}$");
 
     private final AuthService authService;
     private final VerificationService verificationService;
