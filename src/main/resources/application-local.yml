@@ -6,7 +6,7 @@ spring:
   config:
     import: optional:classpath:application-local-secrets.yml
   datasource:
-    url: ${DB_URL:jdbc:mysql://localhost:3306/blog?serverTimezone=GMT%2B8&useUnicode=true&characterEncoding=utf-8}
+    url: ${DB_URL:jdbc:mysql://localhost:3306/px2400_v1_dev?serverTimezone=UTC&useUnicode=true&characterEncoding=utf8}
     username: ${DB_USERNAME:root}
     password: ${DB_PASSWORD:}
     driver-class-name: com.mysql.cj.jdbc.Driver
@@ -22,4 +22,6 @@ management:
 
 app:
   upload:
-    dir: ${APP_UPLOAD_DIR:/Users/yuanqi/devTools/img}
+    dir: ${APP_UPLOAD_DIR:./private-media-local}
+  auth:
+    allowed-origins: ${APP_ALLOWED_ORIGINS:https://localhost:5173,http://localhost:5173}

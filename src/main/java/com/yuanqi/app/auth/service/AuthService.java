@@ -63,16 +63,16 @@ public class AuthService {
         AuthPolicy.validatePassword(request.getPassword());
         String email = normalizeEmail(request.getEmail());
         if (email == null) {
-            throw new BusinessException(ErrorCode.BAD_REQUEST, "邮箱不能为空");
+            throw new BusinessException(ErrorCode.VALIDATION_FAILED, "邮箱不能为空");
         }
 
         if (userMapper.exists(new LambdaQueryWrapper<User>().eq(User::getUsername, username))) {
             authAuditService.record(null, AuthAuditService.REGISTER_FAILED, false, ip, userAgent, "用户名冲突:" + username);
-            throw new BusinessException(ErrorCode.AUTH_USERNAME_EXISTS);
+            throw new BusinessException(ErrorCode.VALIDATION_FAILED);
         }
         if (userMapper.exists(new LambdaQueryWrapper<User>().eq(User::getEmail, email))) {
             authAuditService.record(null, AuthAuditService.REGISTER_FAILED, false, ip, userAgent, "邮箱冲突:" + email);
-            throw new BusinessException(ErrorCode.AUTH_EMAIL_EXISTS);
+            throw new BusinessException(ErrorCode.EMAIL_ALREADY_REGISTERED);
         }
 
         LocalDateTime now = LocalDateTime.now();
@@ -108,14 +108,14 @@ public class AuthService {
         // 用户不存在：对外与密码错误一致，防枚举
         if (user == null) {
             authAuditService.record(null, AuthAuditService.LOGIN_FAILED, false, ip, userAgent, "账号不存在:" + account);
-            throw new BusinessException(ErrorCode.AUTH_BAD_CREDENTIALS);
+            throw new BusinessException(ErrorCode.INVALID_CREDENTIALS);
         }
 
         assertAccountCanAuthenticate(user, ip, userAgent);
 
         if (!passwordEncoder.matches(request.getPassword(), user.getPassword())) {
             onLoginFailed(user, ip, userAgent);
-            throw new BusinessException(ErrorCode.AUTH_BAD_CREDENTIALS);
+            throw new BusinessException(ErrorCode.INVALID_CREDENTIALS);
         }
 
         // 登录成功：清零失败计数，解除过期锁定状态
@@ -141,13 +141,13 @@ public class AuthService {
         Claims claims = jwtService.parseRefreshClaims(request.getRefreshToken());
         if (claims == null) {
             authAuditService.record(null, AuthAuditService.REFRESH_FAILED, false, ip, userAgent, "refresh 解析失败");
-            throw new BusinessException(ErrorCode.AUTH_REFRESH_INVALID);
+            throw new BusinessException(ErrorCode.SESSION_INVALID);
         }
         Long userId = jwtService.readUserId(claims);
         User user = userId == null ? null : userMapper.selectById(userId);
         if (user == null) {
             authAuditService.record(userId, AuthAuditService.REFRESH_FAILED, false, ip, userAgent, "用户不存在");
-            throw new BusinessException(ErrorCode.AUTH_REFRESH_INVALID);
+            throw new BusinessException(ErrorCode.SESSION_INVALID);
         }
 
         assertAccountCanAuthenticate(user, ip, userAgent);
@@ -157,7 +157,7 @@ public class AuthService {
             authAuditService.record(user.getId(), AuthAuditService.REFRESH_SUCCESS, true, ip, userAgent, "刷新成功");
             return vo;
         } catch (BusinessException ex) {
-            if (ex.getErrorCode() != ErrorCode.AUTH_REFRESH_REUSE) {
+            if (ex.getErrorCode() != ErrorCode.REFRESH_REUSED) {
                 authAuditService.record(user.getId(), AuthAuditService.REFRESH_FAILED, false, ip, userAgent, ex.getMessage());
             }
             throw ex;
@@ -183,13 +183,13 @@ public class AuthService {
     public User requireActiveUser(Long userId) {
         User user = userId == null ? null : userMapper.selectById(userId);
         if (user == null) {
-            throw new BusinessException(ErrorCode.AUTH_ACCESS_INVALID);
+            throw new BusinessException(ErrorCode.SESSION_INVALID);
         }
         if (AccountStatus.DISABLED.name().equals(user.getAccountStatus())) {
-            throw new BusinessException(ErrorCode.AUTH_ACCOUNT_DISABLED);
+            throw new BusinessException(ErrorCode.ACCOUNT_UNAVAILABLE);
         }
         if (isCurrentlyLocked(user)) {
-            throw new BusinessException(ErrorCode.AUTH_ACCOUNT_LOCKED,
+            throw new BusinessException(ErrorCode.ACCOUNT_LOCKED,
                     "账号已锁定，请于 " + user.getLockedUntil() + " 后再试");
         }
         return user;
@@ -207,12 +207,12 @@ public class AuthService {
     private void assertAccountCanAuthenticate(User user, String ip, String userAgent) {
         if (AccountStatus.DISABLED.name().equals(user.getAccountStatus())) {
             authAuditService.record(user.getId(), AuthAuditService.LOGIN_FAILED, false, ip, userAgent, "账号禁用");
-            throw new BusinessException(ErrorCode.AUTH_ACCOUNT_DISABLED);
+            throw new BusinessException(ErrorCode.ACCOUNT_UNAVAILABLE);
         }
         if (isCurrentlyLocked(user)) {
             authAuditService.record(user.getId(), AuthAuditService.LOGIN_LOCKED, false, ip, userAgent,
                     "锁定至 " + user.getLockedUntil());
-            throw new BusinessException(ErrorCode.AUTH_ACCOUNT_LOCKED,
+            throw new BusinessException(ErrorCode.ACCOUNT_LOCKED,
                     "账号已锁定，请于 " + user.getLockedUntil() + " 后再试");
         }
         // 锁定已过期：恢复为 ACTIVE，允许本次继续校验密码

@@ -3,7 +3,7 @@ package com.yuanqi.app.auth.security;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.yuanqi.app.auth.service.JwtService;
 import com.yuanqi.app.common.api.ErrorCode;
-import com.yuanqi.app.common.api.Result;
+import com.yuanqi.app.common.api.ErrorResult;
 import com.yuanqi.app.common.context.UserContext;
 import com.yuanqi.app.common.exception.BusinessException;
 import com.yuanqi.app.user.entity.User;
@@ -59,18 +59,18 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                     Long userId = jwtService.readUserId(claims);
                     User user = userId == null ? null : userMapper.selectById(userId);
                     if (user == null) {
-                        writeError(response, ErrorCode.AUTH_ACCESS_INVALID);
+                        writeError(response, ErrorCode.SESSION_INVALID);
                         return;
                     }
                     // 账号状态二次校验：禁用或仍在锁定期内则拒绝访问
                     if (AccountStatus.DISABLED.name().equals(user.getAccountStatus())) {
-                        writeError(response, ErrorCode.AUTH_ACCOUNT_DISABLED);
+                        writeError(response, ErrorCode.ACCOUNT_UNAVAILABLE);
                         return;
                     }
                     if (AccountStatus.LOCKED.name().equals(user.getAccountStatus())
                             && user.getLockedUntil() != null
                             && user.getLockedUntil().isAfter(LocalDateTime.now())) {
-                        writeError(response, ErrorCode.AUTH_ACCOUNT_LOCKED);
+                        writeError(response, ErrorCode.ACCOUNT_LOCKED);
                         return;
                     }
 
@@ -84,7 +84,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                                     List.of(new SimpleGrantedAuthority(authority)));
                     SecurityContextHolder.getContext().setAuthentication(authentication);
                 } else if (requiresAuthenticationHint(request)) {
-                    writeError(response, ErrorCode.AUTH_ACCESS_INVALID);
+                    writeError(response, ErrorCode.SESSION_INVALID);
                     return;
                 }
             }
@@ -119,6 +119,6 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         response.setStatus(errorCode.getHttpStatus().value());
         response.setCharacterEncoding(StandardCharsets.UTF_8.name());
         response.setContentType(MediaType.APPLICATION_JSON_VALUE);
-        objectMapper.writeValue(response.getWriter(), Result.fail(errorCode, message));
+        objectMapper.writeValue(response.getWriter(), ErrorResult.of(errorCode, message));
     }
 }

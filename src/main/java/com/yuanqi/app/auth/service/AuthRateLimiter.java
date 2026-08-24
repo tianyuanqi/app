@@ -43,7 +43,7 @@ public class AuthRateLimiter {
                 deque.removeFirst();
             }
             if (deque.size() >= limitPerMinute) {
-                throw new BusinessException(ErrorCode.AUTH_RATE_LIMITED);
+                throw new BusinessException(ErrorCode.RATE_LIMITED);
             }
             deque.addLast(now);
         }

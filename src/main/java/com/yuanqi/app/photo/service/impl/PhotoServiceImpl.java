@@ -85,7 +85,7 @@ public class PhotoServiceImpl implements PhotoService {
         requireUserId(userId);
         MultipartFile file = request.getFile();
         if (file == null || file.isEmpty()) {
-            throw new BusinessException(ErrorCode.BAD_REQUEST, "文件不能为空");
+            throw new BusinessException(ErrorCode.VALIDATION_FAILED, "文件不能为空");
         }
 
         PhotoInfo photo = new PhotoInfo();
@@ -99,7 +99,7 @@ public class PhotoServiceImpl implements PhotoService {
         boolean categoryExists = photoCategoryMapper.exists(new LambdaQueryWrapper<PhotoCategory>()
                 .eq(PhotoCategory::getId, request.getCategory()));
         if (!categoryExists) {
-            throw new BusinessException(ErrorCode.BAD_REQUEST, "非法的参数，该分类不存在");
+            throw new BusinessException(ErrorCode.VALIDATION_FAILED, "非法的参数，该分类不存在");
         }
         photo.setCategory_id(request.getCategory());
 
@@ -148,7 +148,7 @@ public class PhotoServiceImpl implements PhotoService {
     public IPage<PhotoCardVO> listPublishedByUid(String uid, Integer current, Integer pageSize) {
         User author = userMapper.selectOne(new LambdaQueryWrapper<User>().eq(User::getUid, uid));
         if (author == null) {
-            throw new BusinessException(ErrorCode.NOT_FOUND, "用户不存在");
+            throw new BusinessException(ErrorCode.RESOURCE_NOT_FOUND, "用户不存在");
         }
         int safeSize = Math.min(pageSize == null ? 10 : pageSize, 100);
         Page<PhotoInfo> page = new Page<>(current == null ? 1 : current, safeSize);
@@ -163,11 +163,11 @@ public class PhotoServiceImpl implements PhotoService {
     public PhotoDetailVO getDetail(Long photoId, Long viewerUserId) {
         PhotoInfo photo = photoInfoMapper.selectById(photoId);
         if (photo == null) {
-            throw new BusinessException(ErrorCode.NOT_FOUND, "作品不存在");
+            throw new BusinessException(ErrorCode.RESOURCE_NOT_FOUND, "作品不存在");
         }
         if (!canView(photo, viewerUserId)) {
             // 对未发布作品统一 404，避免泄露资源存在性
-            throw new BusinessException(ErrorCode.NOT_FOUND, "作品不存在");
+            throw new BusinessException(ErrorCode.RESOURCE_NOT_FOUND, "作品不存在");
         }
         return photoAssembler.toDetail(photo);
     }
@@ -179,7 +179,7 @@ public class PhotoServiceImpl implements PhotoService {
         // 已发布作品允许改元数据；若需重新审核可后续扩展为改后回 PENDING
         if (request.getTitle() != null) {
             if (request.getTitle().isBlank()) {
-                throw new BusinessException(ErrorCode.BAD_REQUEST, "标题不能为空");
+                throw new BusinessException(ErrorCode.VALIDATION_FAILED, "标题不能为空");
             }
             photo.setTitle(request.getTitle().trim());
         }
@@ -193,7 +193,7 @@ public class PhotoServiceImpl implements PhotoService {
             boolean exists = photoCategoryMapper.exists(new LambdaQueryWrapper<PhotoCategory>()
                     .eq(PhotoCategory::getId, request.getCategoryId()));
             if (!exists) {
-                throw new BusinessException(ErrorCode.BAD_REQUEST, "分类不存在");
+                throw new BusinessException(ErrorCode.VALIDATION_FAILED, "分类不存在");
             }
             photo.setCategory_id(request.getCategoryId());
         }
@@ -226,7 +226,7 @@ public class PhotoServiceImpl implements PhotoService {
         PhotoInfo photo = requireOwnedPhoto(photoId, userId);
         String status = photo.getStatus();
         if (!PhotoStatus.DRAFT.name().equals(status) && !PhotoStatus.REJECTED.name().equals(status)) {
-            throw new BusinessException(ErrorCode.BAD_REQUEST, "仅草稿或驳回作品可提交审核");
+            throw new BusinessException(ErrorCode.VALIDATION_FAILED, "仅草稿或驳回作品可提交审核");
         }
         photo.setStatus(PhotoStatus.PENDING.name());
         photo.setRejectReason(null);
@@ -279,7 +279,7 @@ public class PhotoServiceImpl implements PhotoService {
             // hot 暂与 latest 相同，点赞落地后再按热度排序
             wrapper.orderByDesc(PhotoInfo::getCreateTime);
         } else {
-            throw new BusinessException(ErrorCode.BAD_REQUEST, "排序方式仅支持 latest、hot 或 oldest");
+            throw new BusinessException(ErrorCode.VALIDATION_FAILED, "排序方式仅支持 latest、hot 或 oldest");
         }
         return toCardPage(photoInfoMapper.selectPage(page, wrapper));
     }
@@ -363,7 +363,7 @@ public class PhotoServiceImpl implements PhotoService {
         requireUserId(userId);
         PhotoInfo photo = photoInfoMapper.selectById(photoId);
         if (photo == null) {
-            throw new BusinessException(ErrorCode.NOT_FOUND, "作品不存在");
+            throw new BusinessException(ErrorCode.RESOURCE_NOT_FOUND, "作品不存在");
         }
         if (!userId.equals(photo.getUserId())) {
             throw new BusinessException(ErrorCode.FORBIDDEN, "无权操作该作品");
@@ -373,7 +373,7 @@ public class PhotoServiceImpl implements PhotoService {
 
     private void requireUserId(Long userId) {
         if (userId == null) {
-            throw new BusinessException(ErrorCode.UNAUTHORIZED, "请先登录");
+            throw new BusinessException(ErrorCode.AUTH_REQUIRED, "请先登录");
         }
     }
 
@@ -381,7 +381,7 @@ public class PhotoServiceImpl implements PhotoService {
         try {
             PhotoStatus.valueOf(status.trim().toUpperCase());
         } catch (Exception e) {
-            throw new BusinessException(ErrorCode.BAD_REQUEST, "非法的作品状态");
+            throw new BusinessException(ErrorCode.VALIDATION_FAILED, "非法的作品状态");
         }
     }
 

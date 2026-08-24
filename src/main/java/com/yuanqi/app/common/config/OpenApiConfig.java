@@ -12,9 +12,9 @@ import org.springframework.context.annotation.Configuration;
 @Configuration
 @OpenAPIDefinition(
         info = @Info(
-                title = "摄影社区 API",
-                version = "v1",
-                description = "模块化单体服务端接口（/api/v1）"
+                title = "2400px API",
+                version = "1.0",
+                description = "2400px v1.0 模块化单体 Backend；运行时 /v3/api-docs 为机器可读权威契约"
         )
 )
 @SecurityScheme(

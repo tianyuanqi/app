@@ -2,7 +2,7 @@ package com.yuanqi.app.auth.security;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.yuanqi.app.common.api.ErrorCode;
-import com.yuanqi.app.common.api.Result;
+import com.yuanqi.app.common.api.ErrorResult;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
@@ -64,7 +64,6 @@ public class SecurityConfig {
                         .requestMatchers("/api/v1/moderation/**").authenticated()
                         // 分类、静态资源、文档与健康检查
                         .requestMatchers("/api/v1/categories", "/api/v1/categories/**").permitAll()
-                        .requestMatchers("/uploads/**").permitAll()
                         .requestMatchers(
                                 "/v3/api-docs/**",
                                 "/swagger-ui/**",
@@ -75,16 +74,18 @@ public class SecurityConfig {
                 )
                 .exceptionHandling(ex -> ex
                         .authenticationEntryPoint((request, response, authException) -> {
-                            response.setStatus(ErrorCode.UNAUTHORIZED.getHttpStatus().value());
+                            response.setStatus(ErrorCode.AUTH_REQUIRED.getHttpStatus().value());
                             response.setCharacterEncoding(StandardCharsets.UTF_8.name());
                             response.setContentType(MediaType.APPLICATION_JSON_VALUE);
-                            objectMapper.writeValue(response.getWriter(), Result.fail(ErrorCode.UNAUTHORIZED));
+                            objectMapper.writeValue(response.getWriter(), ErrorResult.of(
+                                    ErrorCode.AUTH_REQUIRED, ErrorCode.AUTH_REQUIRED.getMessage()));
                         })
                         .accessDeniedHandler((request, response, accessDeniedException) -> {
                             response.setStatus(ErrorCode.FORBIDDEN.getHttpStatus().value());
                             response.setCharacterEncoding(StandardCharsets.UTF_8.name());
                             response.setContentType(MediaType.APPLICATION_JSON_VALUE);
-                            objectMapper.writeValue(response.getWriter(), Result.fail(ErrorCode.FORBIDDEN));
+                            objectMapper.writeValue(response.getWriter(), ErrorResult.of(
+                                    ErrorCode.FORBIDDEN, ErrorCode.FORBIDDEN.getMessage()));
                         })
                 )
                 .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);

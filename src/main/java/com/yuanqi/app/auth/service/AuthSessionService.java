@@ -69,18 +69,18 @@ public class AuthSessionService {
     public LoginVO rotateRefreshToken(String refreshToken, User user, String ip, String userAgent) {
         Claims claims = jwtService.parseRefreshClaims(refreshToken);
         if (claims == null) {
-            throw new BusinessException(ErrorCode.AUTH_REFRESH_INVALID);
+            throw new BusinessException(ErrorCode.SESSION_INVALID);
         }
         String jti = jwtService.readJti(claims);
         Long tokenUserId = jwtService.readUserId(claims);
         if (jti == null || tokenUserId == null || !tokenUserId.equals(user.getId())) {
-            throw new BusinessException(ErrorCode.AUTH_REFRESH_INVALID);
+            throw new BusinessException(ErrorCode.SESSION_INVALID);
         }
 
         AuthSession session = authSessionMapper.selectOne(new LambdaQueryWrapper<AuthSession>()
                 .eq(AuthSession::getJti, jti));
         if (session == null) {
-            throw new BusinessException(ErrorCode.AUTH_REFRESH_INVALID);
+            throw new BusinessException(ErrorCode.SESSION_INVALID);
         }
 
         // 已吊销且存在替换 jti → 判定 refresh 复用（疑似令牌被盗）
@@ -88,13 +88,13 @@ public class AuthSessionService {
             revokeAllSessions(user.getId());
             authAuditService.record(user.getId(), AuthAuditService.REFRESH_REUSE, false,
                     ip, userAgent, "检测到 refresh 复用，已吊销全部会话");
-            throw new BusinessException(ErrorCode.AUTH_REFRESH_REUSE);
+            throw new BusinessException(ErrorCode.REFRESH_REUSED);
         }
 
         if (session.getRevokedAt() != null
                 || session.getExpiresAt().isBefore(LocalDateTime.now())
                 || !sha256(refreshToken).equals(session.getTokenHash())) {
-            throw new BusinessException(ErrorCode.AUTH_REFRESH_INVALID);
+            throw new BusinessException(ErrorCode.SESSION_INVALID);
         }
 
         String newJti = jwtService.newJti();
@@ -126,7 +126,7 @@ public class AuthSessionService {
     public void revokeByRefreshToken(String refreshToken) {
         Claims claims = jwtService.parseRefreshClaims(refreshToken);
         if (claims == null) {
-            throw new BusinessException(ErrorCode.AUTH_REFRESH_INVALID);
+            throw new BusinessException(ErrorCode.SESSION_INVALID);
         }
         String jti = jwtService.readJti(claims);
         AuthSession session = authSessionMapper.selectOne(new LambdaQueryWrapper<AuthSession>()
@@ -136,7 +136,7 @@ public class AuthSessionService {
             return;
         }
         if (!sha256(refreshToken).equals(session.getTokenHash())) {
-            throw new BusinessException(ErrorCode.AUTH_REFRESH_INVALID);
+            throw new BusinessException(ErrorCode.SESSION_INVALID);
         }
         session.setRevokedAt(LocalDateTime.now());
         authSessionMapper.updateById(session);

@@ -1,0 +1,14 @@
+spring:
+  datasource:
+    url: ${TEST_DB_URL:jdbc:mysql://localhost:3306/px2400_v1_test?serverTimezone=UTC&useUnicode=true&characterEncoding=utf8}
+    username: ${TEST_DB_USERNAME:root}
+    password: ${TEST_DB_PASSWORD:}
+    driver-class-name: com.mysql.cj.jdbc.Driver
+
+app:
+  upload:
+    dir: ${TEST_MEDIA_DIR:./target/test-private-media}
+  auth:
+    allowed-origins: https://frontend.test
+    secure-cookies: true
+    rate-limit-pepper: test-only-deterministic-pepper

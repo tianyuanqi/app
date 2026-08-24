@@ -21,14 +21,14 @@ public final class AuthPolicy {
 
     public static void validateUsername(String username) {
         if (username == null || !USERNAME.matcher(username).matches()) {
-            throw new BusinessException(ErrorCode.AUTH_USERNAME_POLICY,
+            throw new BusinessException(ErrorCode.VALIDATION_FAILED,
                     "用户名需以字母开头，仅含字母数字下划线，长度 3–32");
         }
     }
 
     public static void validatePassword(String password) {
         if (password == null || !PASSWORD.matcher(password).matches()) {
-            throw new BusinessException(ErrorCode.AUTH_PASSWORD_POLICY,
+            throw new BusinessException(ErrorCode.VALIDATION_FAILED,
                     "密码至少 8 位，且需同时包含字母和数字");
         }
     }

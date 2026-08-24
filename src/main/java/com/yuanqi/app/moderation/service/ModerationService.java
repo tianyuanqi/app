@@ -58,7 +58,7 @@ public class ModerationService {
         PhotoInfo photo = requirePhoto(photoId);
         if (!PhotoStatus.PENDING.name().equals(photo.getStatus())
                 && !PhotoStatus.OFFLINE.name().equals(photo.getStatus())) {
-            throw new BusinessException(ErrorCode.BAD_REQUEST, "仅待审或已下架作品可通过审核发布");
+            throw new BusinessException(ErrorCode.VALIDATION_FAILED, "仅待审或已下架作品可通过审核发布");
         }
         photo.setStatus(PhotoStatus.PUBLISHED.name());
         photo.setRejectReason(null);
@@ -73,7 +73,7 @@ public class ModerationService {
         requireAdmin(adminUserId);
         PhotoInfo photo = requirePhoto(photoId);
         if (!PhotoStatus.PENDING.name().equals(photo.getStatus())) {
-            throw new BusinessException(ErrorCode.BAD_REQUEST, "仅待审作品可驳回");
+            throw new BusinessException(ErrorCode.VALIDATION_FAILED, "仅待审作品可驳回");
         }
         photo.setStatus(PhotoStatus.REJECTED.name());
         photo.setRejectReason(request == null || request.getReason() == null ? null : request.getReason().trim());
@@ -88,7 +88,7 @@ public class ModerationService {
         requireAdmin(adminUserId);
         PhotoInfo photo = requirePhoto(photoId);
         if (!PhotoStatus.PUBLISHED.name().equals(photo.getStatus())) {
-            throw new BusinessException(ErrorCode.BAD_REQUEST, "仅已发布作品可下架");
+            throw new BusinessException(ErrorCode.VALIDATION_FAILED, "仅已发布作品可下架");
         }
         photo.setStatus(PhotoStatus.OFFLINE.name());
         photo.setReviewedAt(LocalDateTime.now());
@@ -100,14 +100,14 @@ public class ModerationService {
     private PhotoInfo requirePhoto(Long photoId) {
         PhotoInfo photo = photoInfoMapper.selectById(photoId);
         if (photo == null) {
-            throw new BusinessException(ErrorCode.NOT_FOUND, "作品不存在");
+            throw new BusinessException(ErrorCode.RESOURCE_NOT_FOUND, "作品不存在");
         }
         return photo;
     }
 
     private void requireAdmin(Long userId) {
         if (userId == null) {
-            throw new BusinessException(ErrorCode.UNAUTHORIZED, "请先登录");
+            throw new BusinessException(ErrorCode.AUTH_REQUIRED, "请先登录");
         }
         User user = userMapper.selectById(userId);
         if (user == null || !"ADMIN".equalsIgnoreCase(user.getRole())) {
