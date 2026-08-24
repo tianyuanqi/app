@@ -10,6 +10,7 @@ import org.springdoc.core.customizers.OpenApiCustomizer;
 import io.swagger.v3.oas.models.media.Content;
 import io.swagger.v3.oas.models.media.MediaType;
 import io.swagger.v3.oas.models.media.Schema;
+import io.swagger.v3.oas.models.media.StringSchema;
 import io.swagger.v3.oas.models.responses.ApiResponse;
 import io.swagger.v3.oas.models.headers.Header;
 
@@ -87,6 +88,6 @@ public class OpenApiConfig {
     private void successHeader(io.swagger.v3.oas.models.Operation operation, String name, String description) {
         operation.getResponses().entrySet().stream().filter(entry -> entry.getKey().startsWith("2"))
                 .forEach(entry -> entry.getValue().addHeaderObject(name,
-                        new Header().description(description).schema(new Schema<>().type("string"))));
+                        new Header().description(description).schema(new StringSchema())));
     }
 }
