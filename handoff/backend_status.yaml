@@ -1,7 +1,7 @@
 status: development_incomplete
 as_of: "2026-08-24"
 phase: v1_backend_development
-work_package: V1-BE-001
+work_package: V1-BE-002
 release: 2400px-v1.0
 requirements_baseline: v1.0-REQ-R4
 human_gate_3: Passed
@@ -10,7 +10,7 @@ repository:
   path: /Users/yuanqi/2400px/app
   branch: codex/v1-backend
   source_commit: e80f9257e7213d5bebac29bfd170b067563f010a
-  current_commit_before_handoff_update: 648fae673c1ed18bb165a1c889e7938b0d76182f
+  current_commit_before_handoff_update: a1c3ed981953b6ea2a6ee0b2311391432155480c
   remote_modified: false
   pushed: false
   pull_request_created: false
@@ -28,10 +28,10 @@ environment:
   maven: 3.9.14
   mysql_client: 8.0.30
   spring_boot: 3.5.16
-  runtime_profile: local
+  runtime_profile: test
   isolated_development_schema: px2400_v1_dev
-  isolated_test_schema: px2400_v1_test2
-  flyway_schema_version: 13
+  isolated_test_schema: px2400_v1_p0_final2_20260824
+  flyway_schema_version: 14
 
 implementation_slices:
   - commit: 0df928f
@@ -44,14 +44,20 @@ implementation_slices:
     scope: 公开发现、稳定分页、注册恢复与彻底删除
   - commit: 648fae6
     scope: 头像、作者视图、审核读取与管理员治理查询
+  - commit: cddca8f
+    scope: P0 通用幂等、强 ETag、ADR 0006 管理端读取与契约测试
+  - commit: 16bba5e
+    scope: OpenAPI ETag Header 字符串 Schema
+  - commit: a1c3ed9
+    scope: 幂等并发等待上限与匿名验证码主体归一化
 
 runtime_contract:
   authority: http://127.0.0.1:8080/v3/api-docs
-  evidence_file: /private/tmp/2400px-v1-openapi-final.json
-  sha256: 9b1d60975d235ab1f8e85aba1330371c52dc9c38df71ebf929ec968e5eb83e66
-  bytes: 24843
-  paths: 39
-  operations: 49
+  evidence_file: /private/tmp/2400px-v1-p0-openapi-a1c3ed9.json
+  sha256: 43a98e6f12504c86072e3b7d675abc005631737de98d1edbd9ef852e061baeea
+  bytes: 91575
+  paths: 40
+  operations: 51
   api_prefix: /api/v1
   response_envelope: "{code, message, data}"
   legacy_home_paths_present: false
@@ -61,7 +67,7 @@ verification:
   clean_verify:
     command: ./mvnw clean verify
     result: passed
-    tests_run: 9
+    tests_run: 17
     failures: 0
     errors: 0
     skipped: 0
@@ -70,15 +76,19 @@ verification:
     - { suite: AuthPolicyTest, count: 3, result: passed }
     - { suite: CsrfTokenServiceTest, count: 1, result: passed }
     - { suite: UnicodeTextTest, count: 4, result: passed }
+    - { suite: IdempotencyServiceTest, count: 3, result: passed }
+    - { suite: StrongEtagTest, count: 2, result: passed }
+    - { suite: OpenApiContractTest, count: 1, result: passed }
+    - { suite: AdminContractSecurityTest, count: 2, result: passed }
   fresh_database:
     result: passed
-    schema: px2400_v1_test2
-    migrations: V1-V13
-    note: 第一个隔离测试 schema 因 V13 初稿失败后未清理或修复，改用新的空 schema 重新验证完整迁移链。
+    schema: px2400_v1_p0_final2_20260824
+    migrations: V1-V14
+    note: 该 Schema 从空状态一次性成功应用 V1～V14；没有复用失败后修改的 Schema。
   runtime_startup:
     result: passed
-    schema: px2400_v1_dev
-    migrations_validated: 13
+    schema: px2400_v1_p0_final2_20260824
+    migrations_validated: 14
   health_check:
     result: passed
     status: UP
@@ -116,21 +126,44 @@ integration_readiness:
   backend_overall_ready: false
   frontend_can_integrate: false
   tester_can_accept: false
-  reason: 核心路径已物化并可生成运行时契约，但冻结契约要求的幂等、EXIF、邮件生产适配、补偿清理与契约级测试尚未闭环。
+  reason: 通用幂等与 ADR 0006 已闭环，但逐 Operation 精确 ErrorCode Schema 和完整领域验收矩阵仍未达到 V1-BE-GAP-002/003 的全部验收标准。
+
+adr_0006:
+  status: closed
+  operations:
+    - GET /api/v1/admin/users/{uid}
+    - GET /api/v1/moderation/photos/{workId}
+  evidence:
+    - 两个成功响应均声明并返回原始强 ETag Header
+    - 管理 Mutation 声明 If-Match 和 Idempotency-Key
+    - 未认证和普通用户权限顺序由集成测试覆盖
+
+p0_closure:
+  V1-BE-GAP-001:
+    status: closed
+    evidence: 目标 Mutation 已接入事务内持久化；覆盖合法性、24 小时或验证码 10 分钟保留、同载荷重放、异载荷冲突、并发唯一性、最多等待 10 秒以及 ETag/Location 重放。
+  V1-BE-GAP-002:
+    status: partially_closed
+    evidence: 已发布闭合顶层 ErrorCode、通用 ErrorResult、成功泛型 Schema、认证、Idempotency-Key、If-Match、ETag 及通用错误响应。
+    remaining: 当前 OpenAPI 使用按 Header/权限推导的通用错误响应；尚未把最终差异包中的逐 Operation ErrorCode 子集物化为各响应的受限 Schema，部分 DTO Validation 仍只有宽松上限。
+  V1-BE-GAP-003:
+    status: partially_closed
+    evidence: 测试从 9 增至 17，新增幂等重放/冲突/并发、强 ETag 三类失败、管理权限顺序、ADR 0006 OpenAPI 和空库 V1～V14。
+    remaining: 认证 Session 全链、全部作品/审核状态机、Mutation 后 ETag 变化、稳定分页和防枚举的完整集成矩阵尚未实现。
 
 blocking_gaps:
   - id: V1-BE-GAP-001
     priority: P0
     area: idempotency
-    summary: 除验证码发送的格式校验外，写 Operation 尚未实现统一 Idempotency-Key 持久化、同载荷重放和冲突语义。
+    summary: 已关闭；保留本条用于审计索引。
   - id: V1-BE-GAP-002
     priority: P0
     area: contract
-    summary: OpenAPI 尚未为每个 Operation 闭合 ErrorCode、错误响应、幂等 Header 与全部 DTO 约束。
+    summary: 部分关闭；通用 Schema 和 Header 已发布，但逐 Operation ErrorCode 受限 Schema 与部分 DTO Validation 尚未闭合。
   - id: V1-BE-GAP-003
     priority: P0
     area: testability
-    summary: 当前仅 9 个基础测试，缺少认证会话、权限、领域状态机、并发、分页、Migration 与 OpenAPI 契约集成测试。
+    summary: 部分关闭；当前 17 个测试已覆盖 P0 协议核心，但完整认证、状态机、分页和防枚举集成矩阵仍缺失。
   - id: V1-BE-GAP-004
     priority: P1
     area: exif
@@ -165,5 +198,5 @@ database_safety:
 
 handoff_conclusion:
   result: blocked
-  summary: 已完成接管基线、主要领域骨架、空库 V1-V13、Build 与运行时 OpenAPI 证据，但尚不满足完整 R4 Backend Acceptance Criteria，不能标记可联调、可测试或开发完成。
-  required_next_action: 继续在同一授权分支逐项关闭 V1-BE-GAP-001 至 V1-BE-GAP-009，并补齐域级集成与契约证据后重新评估。
+  summary: V1-BE-GAP-001 与 ADR 0006 已关闭，空库 V1～V14、17 个测试、健康检查和运行时 OpenAPI 均有证据；V1-BE-GAP-002/003 仍为部分关闭，因此不能标记完整真实联调或 READY_FOR_TEST。
+  required_next_action: 下一顺序工作包应只继续闭合逐 Operation ErrorCode/DTO Schema 与认证、状态机、分页、防枚举集成矩阵；P1/P2 保持不变。
