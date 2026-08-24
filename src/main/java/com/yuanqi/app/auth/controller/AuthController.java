@@ -12,6 +12,7 @@ import com.yuanqi.app.auth.vo.AuthViews;
 import com.yuanqi.app.common.api.ErrorCode;
 import com.yuanqi.app.common.api.Result;
 import com.yuanqi.app.common.exception.BusinessException;
+import com.yuanqi.app.common.idempotency.IdempotencyService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.servlet.http.HttpServletRequest;
@@ -25,30 +26,28 @@ import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
-import java.util.regex.Pattern;
-
 @Tag(name = "认证")
 @RestController
 @RequestMapping("/api/v1/auth")
 public class AuthController {
-    private static final Pattern IDEMPOTENCY_KEY = Pattern.compile("^[A-Za-z0-9._~-]{16,64}$");
-
     private final AuthService authService;
     private final VerificationService verificationService;
     private final AuthSessionService sessionService;
     private final AuthCookieService cookies;
     private final CsrfTokenService csrfTokens;
     private final OriginGuard originGuard;
+    private final IdempotencyService idempotency;
 
     public AuthController(AuthService authService, VerificationService verificationService,
                           AuthSessionService sessionService, AuthCookieService cookies,
-                          CsrfTokenService csrfTokens, OriginGuard originGuard) {
+                          CsrfTokenService csrfTokens, OriginGuard originGuard, IdempotencyService idempotency) {
         this.authService = authService;
         this.verificationService = verificationService;
         this.sessionService = sessionService;
         this.cookies = cookies;
         this.csrfTokens = csrfTokens;
         this.originGuard = originGuard;
+        this.idempotency = idempotency;
     }
 
     @Operation(summary = "发送注册邮箱验证码")
@@ -57,8 +56,12 @@ public class AuthController {
             @RequestHeader(value = "Idempotency-Key", required = false) String key,
             @Valid @RequestBody AuthRequests.SendCode request, HttpServletRequest http) {
         originGuard.requireTrusted(http);
-        requireIdempotencyKey(key);
-        return Result.success(verificationService.sendCode(request.email(), ClientInfo.ip(http)));
+        String ip = ClientInfo.ip(http);
+        return idempotency.execute("verification:" + IdempotencyService.sha256(request.email() + "\n" + ip),
+                "POST", "/api/v1/auth/verification-codes", key,
+                java.util.Map.of("email", request.email()), AuthViews.VerificationFlowView.class,
+                java.time.Duration.ofMinutes(10),
+                () -> ResponseEntity.ok(Result.success(verificationService.sendCode(request.email(), ip)))).getBody();
     }
 
     @Operation(summary = "注册并自动登录")
@@ -143,12 +146,4 @@ public class AuthController {
         }
     }
 
-    private void requireIdempotencyKey(String key) {
-        if (key == null || key.isBlank()) {
-            throw new BusinessException(ErrorCode.IDEMPOTENCY_KEY_REQUIRED);
-        }
-        if (!IDEMPOTENCY_KEY.matcher(key).matches()) {
-            throw new BusinessException(ErrorCode.INVALID_IDEMPOTENCY_KEY);
-        }
-    }
 }

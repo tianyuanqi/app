@@ -7,6 +7,7 @@ import com.yuanqi.app.common.api.ErrorCode;import com.yuanqi.app.common.exceptio
 import com.yuanqi.app.user.entity.AccountGovernanceEvent;import com.yuanqi.app.user.entity.UserProfile;
 import com.yuanqi.app.user.mapper.AccountGovernanceEventMapper;import com.yuanqi.app.user.mapper.UserProfileMapper;import com.yuanqi.app.user.vo.GovernanceViews;
 import org.springframework.stereotype.Service;import org.springframework.transaction.annotation.Transactional;
+import com.yuanqi.app.common.http.StrongEtag;
 import java.time.Clock;import java.time.LocalDateTime;import java.time.ZoneOffset;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 
@@ -23,6 +24,7 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;import 
   event.setAction(disable?"DISABLE":"ENABLE");event.setReason(AuthPolicy.validateReason(reason));event.setPreviousStatus(before);event.setResultingStatus(desired);event.setOccurredAt(now());events.insert(event);
   if(disable)sessions.revokeAll(target.getId(),"ACCOUNT_DISABLED");return view(target);
  }
+ @Transactional(readOnly=true) public GovernanceViews.AccountSummary get(String uid){Account target=accounts.findByUid(uid);if(target==null)throw new BusinessException(ErrorCode.RESOURCE_NOT_FOUND);if(!"USER".equals(target.getRole()))throw new BusinessException(ErrorCode.TARGET_NOT_GOVERNABLE);return view(target);}
  @Transactional(readOnly=true) public GovernanceViews.AccountPage list(String uid,String status,int page,int size,String sort){
   if(page<1)throw new BusinessException(ErrorCode.INVALID_PAGE);if(size<1||size>100)throw new BusinessException(ErrorCode.INVALID_PAGE_SIZE);
   if(uid!=null&&(uid.isEmpty()||uid.length()>64))throw new BusinessException(ErrorCode.INVALID_FILTER);
@@ -34,5 +36,5 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;import 
  }
  @Transactional(readOnly=true) public com.yuanqi.app.common.api.PageResult<GovernanceViews.Event> history(String uid,int page,int size){if(page<1)throw new BusinessException(ErrorCode.INVALID_PAGE);if(size<1||size>100)throw new BusinessException(ErrorCode.INVALID_PAGE_SIZE);Account target=accounts.findByUid(uid);if(target==null||!"USER".equals(target.getRole()))throw new BusinessException(ErrorCode.RESOURCE_NOT_FOUND);var q=new LambdaQueryWrapper<AccountGovernanceEvent>().eq(AccountGovernanceEvent::getTargetAccountId,target.getId()).orderByDesc(AccountGovernanceEvent::getOccurredAt).orderByDesc(AccountGovernanceEvent::getPublicId);Page<AccountGovernanceEvent> r=events.selectPage(new Page<>(page,size),q);var views=r.getRecords().stream().map(e->new GovernanceViews.Event(e.getPublicId(),e.getAction(),e.getReason(),accounts.selectById(e.getActorAccountId()).getUid(),e.getOccurredAt().atOffset(ZoneOffset.UTC))).toList();return com.yuanqi.app.common.api.PageResult.of(views,page,size,r.getTotal());}
  public GovernanceViews.AccountSummary view(Account a){UserProfile p=profiles.selectById(a.getId());LoginSecurityState s=security.selectById(a.getId());return new GovernanceViews.AccountSummary(a.getUid(),p.getUsername(),null,"USER",a.getGovernanceStatus(),s==null||s.getLockedUntil()==null?null:s.getLockedUntil().atOffset(ZoneOffset.UTC),a.getCreatedAt().atOffset(ZoneOffset.UTC),tag(a));}
- private void match(String v,Account a){if(v==null)throw new BusinessException(ErrorCode.PRECONDITION_REQUIRED);if(!tag(a).equals(v))throw new BusinessException(ErrorCode.PRECONDITION_FAILED);} private String tag(Account a){return "\"account-"+a.getRowVersion()+"\"";}private LocalDateTime now(){return LocalDateTime.ofInstant(clock.instant(),ZoneOffset.UTC);}
+ private void match(String v,Account a){StrongEtag.requireMatch(v,tag(a));} private String tag(Account a){return "\"account-"+a.getRowVersion()+"\"";}private LocalDateTime now(){return LocalDateTime.ofInstant(clock.instant(),ZoneOffset.UTC);}
 }

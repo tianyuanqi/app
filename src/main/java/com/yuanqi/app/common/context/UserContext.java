@@ -7,6 +7,7 @@ package com.yuanqi.app.common.context;
 public final class UserContext {
 
     private static final ThreadLocal<Long> USER_ID = new ThreadLocal<>();
+    private static final ThreadLocal<String> UID = new ThreadLocal<>();
 
     private UserContext() {
     }
@@ -18,9 +19,12 @@ public final class UserContext {
     public static Long getUserId() {
         return USER_ID.get();
     }
+    public static void setUid(String uid) { UID.set(uid); }
+    public static String getUid() { return UID.get(); }
 
     /** 请求结束时清理，防止线程复用污染 */
     public static void remove() {
         USER_ID.remove();
+        UID.remove();
     }
 }

@@ -4,6 +4,7 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.yuanqi.app.auth.support.PublicIdGenerator;
 import com.yuanqi.app.common.api.ErrorCode;
 import com.yuanqi.app.common.exception.BusinessException;
+import com.yuanqi.app.common.http.StrongEtag;
 import com.yuanqi.app.photo.entity.MediaAsset;
 import com.yuanqi.app.photo.mapper.MediaAssetMapper;
 import com.yuanqi.app.photo.vo.MediaViews;
@@ -114,8 +115,7 @@ public class MediaService {
 
     public String tag(MediaAsset asset) { return "\"media-" + asset.getRowVersion() + "\""; }
     private void match(String value, MediaAsset asset) {
-        if (value == null) throw new BusinessException(ErrorCode.PRECONDITION_REQUIRED);
-        if (!tag(asset).equals(value)) throw new BusinessException(ErrorCode.PRECONDITION_FAILED);
+        StrongEtag.requireMatch(value, tag(asset));
     }
     private LocalDateTime now() { return LocalDateTime.ofInstant(clock.instant(), ZoneOffset.UTC); }
 }

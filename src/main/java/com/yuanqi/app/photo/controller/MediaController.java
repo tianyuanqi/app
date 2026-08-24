@@ -26,6 +26,9 @@ import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.util.concurrent.TimeUnit;
+import com.yuanqi.app.common.idempotency.IdempotencyService;
+import java.io.IOException;
+import java.util.Map;
 
 @Tag(name = "媒体")
 @RestController
@@ -33,14 +36,16 @@ import java.util.concurrent.TimeUnit;
 public class MediaController {
     private final MediaService service;
     private final MediaStorage storage;
-    public MediaController(MediaService service, MediaStorage storage) { this.service = service; this.storage = storage; }
+    private final IdempotencyService idempotency;
+    public MediaController(MediaService service, MediaStorage storage, IdempotencyService idempotency) { this.service = service; this.storage = storage; this.idempotency=idempotency; }
 
     @Operation(summary = "上传作品原图", security = @SecurityRequirement(name = "Authorization"))
     @PostMapping(value = "/photos", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ResponseEntity<Result<MediaViews.Processing>> upload(@RequestParam String clientUploadId,
-            @RequestPart("file") MultipartFile file) {
-        MediaViews.Processing view = service.upload(UserContext.getUserId(), clientUploadId, file);
-        return ResponseEntity.accepted().header(HttpHeaders.ETAG, view.versionTag()).body(Result.success(view));
+            @RequestHeader(value="Idempotency-Key",required=false) String key,
+            @RequestPart("file") MultipartFile file) throws IOException {
+        Map<String,Object> digest=Map.of("clientUploadId",clientUploadId,"fileSha256",IdempotencyService.sha256(file.getBytes()),"fileBytes",file.getSize());
+        return idempotency.execute(subject(),"POST","/api/v1/media/photos",key,digest,MediaViews.Processing.class,()->{MediaViews.Processing view=service.upload(UserContext.getUserId(),clientUploadId,file);return ResponseEntity.accepted().header(HttpHeaders.ETAG,view.versionTag()).header(HttpHeaders.LOCATION,"/api/v1/media/photos/"+view.mediaId()).body(Result.success(view));});
     }
 
     @Operation(summary = "读取媒体处理状态", security = @SecurityRequirement(name = "Authorization"))
@@ -53,9 +58,9 @@ public class MediaController {
     @Operation(summary = "重试可恢复媒体处理", security = @SecurityRequirement(name = "Authorization"))
     @PostMapping("/photos/{mediaId}/retry")
     public ResponseEntity<Result<MediaViews.Processing>> retry(@PathVariable String mediaId,
-            @RequestHeader(value = HttpHeaders.IF_MATCH, required = false) String ifMatch) {
-        MediaViews.Processing view = service.retry(UserContext.getUserId(), mediaId, ifMatch);
-        return ResponseEntity.accepted().header(HttpHeaders.ETAG, view.versionTag()).body(Result.success(view));
+            @RequestHeader(value = HttpHeaders.IF_MATCH, required = false) String ifMatch,
+            @RequestHeader(value="Idempotency-Key",required=false) String key) {
+        return idempotency.execute(subject(),"POST","/api/v1/media/photos/{mediaId}/retry",key,Map.of("mediaId",mediaId,"ifMatch",String.valueOf(ifMatch)),MediaViews.Processing.class,()->{MediaViews.Processing view=service.retry(UserContext.getUserId(),mediaId,ifMatch);return ResponseEntity.accepted().header(HttpHeaders.ETAG,view.versionTag()).body(Result.success(view));});
     }
 
     @Operation(summary = "删除未被作品引用的媒体", security = @SecurityRequirement(name = "Authorization"))
@@ -73,4 +78,5 @@ public class MediaController {
                 .eTag(service.tag(asset)).cacheControl(CacheControl.maxAge(1, TimeUnit.HOURS).cachePublic())
                 .body(new FileSystemResource(storage.safe(asset.getWebStorageKey())));
     }
+    private String subject(){return UserContext.getUid();}
 }

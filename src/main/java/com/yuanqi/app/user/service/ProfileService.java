@@ -5,6 +5,7 @@ import com.yuanqi.app.auth.mapper.AccountMapper;
 import com.yuanqi.app.auth.support.AuthPolicy;
 import com.yuanqi.app.common.api.ErrorCode;
 import com.yuanqi.app.common.exception.BusinessException;
+import com.yuanqi.app.common.http.StrongEtag;
 import com.yuanqi.app.common.text.UnicodeText;
 import com.yuanqi.app.user.dto.ProfileRequests;
 import com.yuanqi.app.user.entity.UserProfile;
@@ -123,8 +124,7 @@ public class ProfileService {
     }
 
     private void requireMatch(String ifMatch, long current) {
-        if (ifMatch == null || ifMatch.isBlank()) throw new BusinessException(ErrorCode.PRECONDITION_REQUIRED);
-        if (!versionTag(current).equals(ifMatch)) throw new BusinessException(ErrorCode.PRECONDITION_FAILED);
+        StrongEtag.requireMatch(ifMatch, versionTag(current));
     }
 
     private Account requireAccount(Long id) {

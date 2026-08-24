@@ -1,4 +1,5 @@
 package com.yuanqi.app.photo.service;
+import com.yuanqi.app.common.http.StrongEtag;
 import com.yuanqi.app.auth.entity.Account;import com.yuanqi.app.auth.mapper.AccountMapper;import com.yuanqi.app.common.api.ErrorCode;import com.yuanqi.app.common.exception.BusinessException;import com.yuanqi.app.photo.entity.PhotoWork;import com.yuanqi.app.photo.mapper.PhotoWorkMapper;import com.yuanqi.app.photo.vo.WorkViews;import org.springframework.jdbc.core.JdbcTemplate;import org.springframework.stereotype.Service;import org.springframework.transaction.annotation.Transactional;
 import java.time.Clock;import java.time.LocalDateTime;import java.time.ZoneOffset;import java.util.List;
 @Service public class WorkDeletionService{private final PhotoWorkMapper works;private final AccountMapper accounts;private final JdbcTemplate jdbc;private final Clock clock;public WorkDeletionService(PhotoWorkMapper w,AccountMapper a,JdbcTemplate j,Clock c){works=w;accounts=a;jdbc=j;clock=c;}
@@ -10,4 +11,4 @@ import java.time.Clock;import java.time.LocalDateTime;import java.time.ZoneOffse
   work.setPublicRevisionId(null);work.setWorkingRevisionId(null);works.updateById(work);works.deleteById(work.getId());
   for(Long id:media)if(!Boolean.TRUE.equals(jdbc.queryForObject("SELECT COUNT(*)>0 FROM revision_media WHERE media_id=?",Boolean.class,id)))jdbc.update("INSERT IGNORE INTO media_cleanup_job(media_id,reason,status,attempt_count,next_attempt_at,deadline_at,created_at,updated_at) VALUES(?,?,'PENDING',0,?,?,?,?)",id,"WORK_DELETED",now,now.plusHours(24),now,now);
   return new WorkViews.DeleteResult(workId,true,now.atOffset(ZoneOffset.UTC));}
- private void match(String v,PhotoWork w){if(v==null)throw new BusinessException(ErrorCode.PRECONDITION_REQUIRED);if(!("\"work-"+w.getRowVersion()+"\"").equals(v))throw new BusinessException(ErrorCode.PRECONDITION_FAILED);}private LocalDateTime now(){return LocalDateTime.ofInstant(clock.instant(),ZoneOffset.UTC);}}
+ private void match(String v,PhotoWork w){StrongEtag.requireMatch(v,"\"work-"+w.getRowVersion()+"\"");}private LocalDateTime now(){return LocalDateTime.ofInstant(clock.instant(),ZoneOffset.UTC);}}

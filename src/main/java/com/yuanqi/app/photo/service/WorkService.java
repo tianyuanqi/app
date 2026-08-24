@@ -3,6 +3,7 @@ package com.yuanqi.app.photo.service;
 import com.yuanqi.app.auth.support.PublicIdGenerator;
 import com.yuanqi.app.common.api.ErrorCode;
 import com.yuanqi.app.common.exception.BusinessException;
+import com.yuanqi.app.common.http.StrongEtag;
 import com.yuanqi.app.common.text.UnicodeText;
 import com.yuanqi.app.photo.dto.WorkRequests;
 import com.yuanqi.app.photo.entity.MediaAsset;
@@ -286,8 +287,7 @@ public class WorkService {
     }
     private PhotoRevision revision(Long id) { return id == null ? null : revisionMapper.selectById(id); }
     private void match(String value, long version) {
-        if (value == null) throw new BusinessException(ErrorCode.PRECONDITION_REQUIRED);
-        if (!tag(version).equals(value)) throw new BusinessException(ErrorCode.PRECONDITION_FAILED);
+        StrongEtag.requireMatch(value, tag(version));
     }
     private String tag(long version) { return "\"work-" + version + "\""; }
     private void bump(PhotoWork work) { work.setRowVersion(work.getRowVersion() + 1); work.setUpdatedAt(now()); workMapper.updateById(work); }

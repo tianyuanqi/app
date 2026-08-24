@@ -21,6 +21,8 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import com.yuanqi.app.common.idempotency.IdempotencyService;
+import java.util.Map;
 
 @Tag(name = "作品")
 @RestController
@@ -29,13 +31,14 @@ import org.springframework.web.bind.annotation.RestController;
 public class PhotoController {
     private final WorkService service;
     private final WorkDeletionService deletionService;
+    private final IdempotencyService idempotency;
 
-    public PhotoController(WorkService service, WorkDeletionService deletionService) { this.service = service; this.deletionService=deletionService; }
+    public PhotoController(WorkService service, WorkDeletionService deletionService, IdempotencyService idempotency) { this.service = service; this.deletionService=deletionService;this.idempotency=idempotency; }
 
     @Operation(summary = "创建作品和首个草稿")
     @PostMapping
-    public ResponseEntity<Result<WorkViews.AuthorWork>> create(@Valid @RequestBody WorkRequests.Draft request) {
-        return response(service.create(UserContext.getUserId(), request));
+    public ResponseEntity<Result<WorkViews.AuthorWork>> create(@RequestHeader(value="Idempotency-Key",required=false)String key,@Valid @RequestBody WorkRequests.Draft request) {
+        return idempotency.execute(subject(),"POST","/api/v1/photos",key,request,WorkViews.AuthorWork.class,()->{WorkViews.AuthorWork view=service.create(UserContext.getUserId(),request);return ResponseEntity.ok().header(HttpHeaders.ETAG,view.summary().versionTag()).header(HttpHeaders.LOCATION,"/api/v1/photos/"+view.summary().workId()+"/author-view").body(Result.success(view));});
     }
 
     @Operation(summary = "读取作者复合状态")
@@ -49,8 +52,9 @@ public class PhotoController {
     @Operation(summary = "创建或恢复可编辑草稿")
     @PostMapping("/{workId}/draft")
     public ResponseEntity<Result<WorkViews.AuthorWork>> createDraft(@PathVariable String workId,
-            @RequestHeader(value = HttpHeaders.IF_MATCH, required = false) String ifMatch) {
-        return response(service.createDraft(UserContext.getUserId(), workId, ifMatch));
+            @RequestHeader(value = HttpHeaders.IF_MATCH, required = false) String ifMatch,
+            @RequestHeader(value="Idempotency-Key",required=false)String key) {
+        return idempotency.execute(subject(),"POST","/api/v1/photos/{workId}/draft",key,Map.of("workId",workId,"ifMatch",String.valueOf(ifMatch)),WorkViews.AuthorWork.class,()->response(service.createDraft(UserContext.getUserId(),workId,ifMatch)));
     }
 
     @Operation(summary = "保存草稿")
@@ -64,22 +68,25 @@ public class PhotoController {
     @Operation(summary = "提交审核")
     @PostMapping("/{workId}/submit")
     public ResponseEntity<Result<WorkViews.AuthorWork>> submit(@PathVariable String workId,
-            @RequestHeader(value = HttpHeaders.IF_MATCH, required = false) String ifMatch) {
-        return response(service.submit(UserContext.getUserId(), workId, ifMatch));
+            @RequestHeader(value = HttpHeaders.IF_MATCH, required = false) String ifMatch,
+            @RequestHeader(value="Idempotency-Key",required=false)String key) {
+        return idempotency.execute(subject(),"POST","/api/v1/photos/{workId}/submit",key,Map.of("workId",workId,"ifMatch",String.valueOf(ifMatch)),WorkViews.AuthorWork.class,()->response(service.submit(UserContext.getUserId(),workId,ifMatch)));
     }
 
     @Operation(summary = "撤回待审版本")
     @PostMapping("/{workId}/withdraw")
     public ResponseEntity<Result<WorkViews.AuthorWork>> withdraw(@PathVariable String workId,
-            @RequestHeader(value = HttpHeaders.IF_MATCH, required = false) String ifMatch) {
-        return response(service.withdraw(UserContext.getUserId(), workId, ifMatch));
+            @RequestHeader(value = HttpHeaders.IF_MATCH, required = false) String ifMatch,
+            @RequestHeader(value="Idempotency-Key",required=false)String key) {
+        return idempotency.execute(subject(),"POST","/api/v1/photos/{workId}/withdraw",key,Map.of("workId",workId,"ifMatch",String.valueOf(ifMatch)),WorkViews.AuthorWork.class,()->response(service.withdraw(UserContext.getUserId(),workId,ifMatch)));
     }
 
     @Operation(summary="彻底删除自己的作品、互动和媒体引用")
     @org.springframework.web.bind.annotation.DeleteMapping("/{workId}")
-    public Result<WorkViews.DeleteResult> delete(@PathVariable String workId,@RequestHeader(value=HttpHeaders.IF_MATCH,required=false)String ifMatch,@org.springframework.web.bind.annotation.RequestParam boolean confirmation){return Result.success(deletionService.delete(UserContext.getUserId(),workId,ifMatch,confirmation));}
+    public Result<WorkViews.DeleteResult> delete(@PathVariable String workId,@RequestHeader(value=HttpHeaders.IF_MATCH,required=false)String ifMatch,@RequestHeader(value="Idempotency-Key",required=false)String key,@org.springframework.web.bind.annotation.RequestParam boolean confirmation){return idempotency.execute(subject(),"DELETE","/api/v1/photos/{workId}",key,Map.of("workId",workId,"ifMatch",String.valueOf(ifMatch),"confirmation",confirmation),WorkViews.DeleteResult.class,()->ResponseEntity.ok(Result.success(deletionService.delete(UserContext.getUserId(),workId,ifMatch,confirmation)))).getBody();}
 
     private ResponseEntity<Result<WorkViews.AuthorWork>> response(WorkViews.AuthorWork view) {
         return ResponseEntity.ok().header(HttpHeaders.ETAG, view.summary().versionTag()).body(Result.success(view));
     }
+    private String subject(){return UserContext.getUid();}
 }

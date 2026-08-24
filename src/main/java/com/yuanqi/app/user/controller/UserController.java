@@ -29,11 +29,13 @@ public class UserController {
     private final ProfileService profileService;
     private final PublicPhotoService publicPhotoService;
     private final com.yuanqi.app.user.service.AvatarService avatarService;
+    private final com.yuanqi.app.common.idempotency.IdempotencyService idempotency;
 
-    public UserController(ProfileService profileService, PublicPhotoService publicPhotoService,com.yuanqi.app.user.service.AvatarService avatarService) {
+    public UserController(ProfileService profileService, PublicPhotoService publicPhotoService,com.yuanqi.app.user.service.AvatarService avatarService,com.yuanqi.app.common.idempotency.IdempotencyService idempotency) {
         this.profileService = profileService;
         this.publicPhotoService=publicPhotoService;
         this.avatarService=avatarService;
+        this.idempotency=idempotency;
     }
 
     @Operation(summary = "获取当前用户私有资料", security = @SecurityRequirement(name = "Authorization"))
@@ -62,6 +64,6 @@ public class UserController {
     public Result<PageResult<PublicPhotoViews.Card>> publicPhotos(@PathVariable String uid,@org.springframework.web.bind.annotation.RequestParam(defaultValue="1")int page){profileService.publicProfile(uid);return Result.success(publicPhotoService.feed(UserContext.getUserId(),null,null,java.util.List.of(),page,uid));}
 
     @Operation(summary="上传并生成 512x512 头像",security=@SecurityRequirement(name="Authorization")) @org.springframework.web.bind.annotation.PostMapping(value="/me/avatar",consumes=org.springframework.http.MediaType.MULTIPART_FORM_DATA_VALUE)
-    public ResponseEntity<Result<com.yuanqi.app.user.service.AvatarService.Mutation>> avatar(@RequestHeader(value=HttpHeaders.IF_MATCH,required=false)String match,@org.springframework.web.bind.annotation.RequestPart("file")org.springframework.web.multipart.MultipartFile file){var v=avatarService.upload(UserContext.getUserId(),match,file);return ResponseEntity.ok().header(HttpHeaders.ETAG,v.profileVersionTag()).body(Result.success(v));}
+    public ResponseEntity<Result<com.yuanqi.app.user.service.AvatarService.Mutation>> avatar(@RequestHeader(value=HttpHeaders.IF_MATCH,required=false)String match,@RequestHeader(value="Idempotency-Key",required=false)String key,@org.springframework.web.bind.annotation.RequestPart("file")org.springframework.web.multipart.MultipartFile file)throws java.io.IOException{return idempotency.execute(UserContext.getUid(),"POST","/api/v1/users/me/avatar",key,java.util.Map.of("ifMatch",String.valueOf(match),"fileSha256",com.yuanqi.app.common.idempotency.IdempotencyService.sha256(file.getBytes()),"fileBytes",file.getSize()),com.yuanqi.app.user.service.AvatarService.Mutation.class,()->{var v=avatarService.upload(UserContext.getUserId(),match,file);return ResponseEntity.ok().header(HttpHeaders.ETAG,v.profileVersionTag()).body(Result.success(v));});}
     @Operation(summary="删除当前头像",security=@SecurityRequirement(name="Authorization")) @org.springframework.web.bind.annotation.DeleteMapping("/me/avatar") public ResponseEntity<Result<com.yuanqi.app.user.service.AvatarService.Mutation>> deleteAvatar(@RequestHeader(value=HttpHeaders.IF_MATCH,required=false)String match){var v=avatarService.delete(UserContext.getUserId(),match);return ResponseEntity.ok().header(HttpHeaders.ETAG,v.profileVersionTag()).body(Result.success(v));}
 }
