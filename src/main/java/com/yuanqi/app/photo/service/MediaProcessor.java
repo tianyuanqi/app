@@ -17,6 +17,7 @@ import java.awt.image.BufferedImage;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.Files;
+import java.nio.file.Path;
 import java.security.MessageDigest;
 import java.time.Clock;
 import java.time.LocalDateTime;
@@ -78,13 +79,20 @@ public class MediaProcessor {
     }
 
     private Decoded decode(String key) throws IOException {
-        try (ImageInputStream input = ImageIO.createImageInputStream(storage.safe(key).toFile())) {
+        Path source = storage.safe(key);
+        if (!Files.isRegularFile(source)) {
+            // 暂存对象缺失属于存储/处理故障，保留重试窗口；不能误报为用户上传内容无效。
+            throw new IOException("staged media unavailable");
+        }
+        try (ImageInputStream input = ImageIO.createImageInputStream(source.toFile())) {
             if (input == null) throw new MediaValidationException("INVALID_CONTENT");
             Iterator<ImageReader> readers = ImageIO.getImageReaders(input);
             if (!readers.hasNext()) throw new MediaValidationException("UNSUPPORTED_FORMAT");
             ImageReader reader = readers.next();
             try {
-                reader.setInput(input, true, false);
+                // getNumImages(true) 需要允许 Reader 在输入中回溯；seekForwardOnly=true 会使合法 PNG
+                // 在帧数检查时抛出 IllegalStateException，并被误判为可重试处理失败。
+                reader.setInput(input, false, false);
                 String format = reader.getFormatName().toLowerCase(Locale.ROOT);
                 if (!(format.contains("jpeg") || format.equals("jpg") || format.equals("png") || format.equals("webp")))
                     throw new MediaValidationException("UNSUPPORTED_FORMAT");

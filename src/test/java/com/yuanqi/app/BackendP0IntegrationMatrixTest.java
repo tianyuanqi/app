@@ -165,6 +165,35 @@ class BackendP0IntegrationMatrixTest {
         assertThat(page.totalItems()).isEqualTo(3);
     }
 
+    @Test void 作者Revision与审核Target无损返回分类标签和有序Web媒体() {
+        long owner = account("uid_consumer_owner", "USER");
+        long admin = account("uid_consumer_admin", "ADMIN");
+        String mediaId = media(owner, "media_consumer");
+        WorkRequests.Draft request = new WorkRequests.Draft("消费者契约", "描述", "上海",
+                "cat_landscape", List.of("Photo", "风光"), List.of(mediaId));
+        WorkViews.AuthorWork created = works.create(owner, request);
+        WorkViews.Revision draft = created.workingRevision();
+        assertThat(draft.category().categoryId()).isEqualTo("cat_landscape");
+        assertThat(draft.tags()).extracting(WorkViews.Tag::name).containsExactly("Photo", "风光");
+        assertThat(draft.media()).hasSize(1);
+        assertThat(draft.media().get(0).position()).isEqualTo(1);
+        assertThat(draft.media().get(0).cover()).isTrue();
+        assertThat(draft.media().get(0).web().accessMode()).isEqualTo("BEARER_FETCH");
+        assertThat(draft.media().get(0).web().mimeType()).isEqualTo("image/jpeg");
+        assertThat(draft.media().get(0).parameters()).isNotNull();
+
+        WorkViews.AuthorWork pending = works.submit(owner, created.summary().workId(), created.summary().versionTag());
+        var target = reviews.target(admin, created.summary().workId(), pending.workingRevision().revisionId());
+        assertThat(target.targetRevision().category().categoryId()).isEqualTo("cat_landscape");
+        assertThat(target.targetRevision().tags()).extracting(WorkViews.Tag::name).containsExactly("Photo", "风光");
+        assertThat(target.targetRevision().media()).extracting(WorkViews.RevisionMedia::mediaId)
+                .containsExactly(mediaId);
+        assertThat(target.targetRevision().media().get(0).web().url())
+                .isEqualTo("/api/v1/media/" + mediaId + "/web");
+        assertThat(target.currentPublicRevision()).isNull();
+        assertThat(target.author().uid()).isEqualTo("uid_consumer_owner");
+    }
+
     private long account(String uid, String role) {
         jdbc.update("INSERT INTO user_account(uid,email,email_key,password_hash,role,governance_status,row_version,created_at,updated_at) VALUES(?,?,?,?,?,'ACTIVE',0,NOW(6),NOW(6))",
                 uid, uid + "@example.invalid", uid + "@example.invalid", "test-hash", role);
@@ -174,8 +203,9 @@ class BackendP0IntegrationMatrixTest {
     }
 
     private String media(long owner, String mediaId) {
-        jdbc.update("INSERT INTO media_asset(media_id,client_upload_id,owner_account_id,purpose,mime_type,byte_size,width,height,frame_count,status,row_version,created_at,updated_at) VALUES(?,?,?,'PHOTO','image/jpeg',1024,2400,1600,1,'READY',0,NOW(6),NOW(6))",
-                mediaId, UUID.randomUUID().toString(), owner);
+        jdbc.update("INSERT INTO media_asset(media_id,client_upload_id,owner_account_id,purpose,original_storage_key,web_storage_key,mime_type,byte_size,width,height,frame_count,status,row_version,created_at,updated_at) VALUES(?,?,?,'PHOTO',?,?,'image/jpeg',1024,2400,1600,1,'READY',0,NOW(6),NOW(6))",
+                mediaId, UUID.randomUUID().toString(), owner, "original/" + mediaId + ".jpg",
+                "web/" + mediaId + ".jpg");
         return mediaId;
     }
 

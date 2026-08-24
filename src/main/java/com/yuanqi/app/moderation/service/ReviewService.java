@@ -13,6 +13,8 @@ import com.yuanqi.app.photo.entity.PhotoRevision;
 import com.yuanqi.app.photo.entity.PhotoWork;
 import com.yuanqi.app.photo.mapper.PhotoRevisionMapper;
 import com.yuanqi.app.photo.mapper.PhotoWorkMapper;
+import com.yuanqi.app.photo.service.WorkService;
+import com.yuanqi.app.photo.vo.WorkViews;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -32,18 +34,36 @@ public class ReviewService {
     private final PublicIdGenerator ids;
     private final Clock clock;
     private final JdbcTemplate jdbc;
+    private final WorkService workService;
 
     public ReviewService(PhotoWorkMapper workMapper, PhotoRevisionMapper revisionMapper,
                          ModerationEventMapper eventMapper, AccountMapper accountMapper,
-                         PublicIdGenerator ids, Clock clock, JdbcTemplate jdbc) {
+                         PublicIdGenerator ids, Clock clock, JdbcTemplate jdbc, WorkService workService) {
         this.workMapper = workMapper; this.revisionMapper = revisionMapper; this.eventMapper = eventMapper;
         this.accountMapper = accountMapper; this.ids = ids; this.clock = clock;
         this.jdbc=jdbc;
+        this.workService = workService;
     }
 
     @Transactional(readOnly=true) public PageResult<ModerationViews.TargetSummary> queue(int page,int size){if(page<1)throw new BusinessException(ErrorCode.INVALID_PAGE);if(size<1||size>100)throw new BusinessException(ErrorCode.INVALID_PAGE_SIZE);long total=jdbc.queryForObject("SELECT COUNT(*) FROM photo_revision WHERE state='PENDING'",Long.class);var items=jdbc.query("SELECT w.work_id,r.revision_id,a.uid,r.title,r.submitted_at,w.row_version FROM photo_revision r JOIN photo_work w ON w.working_revision_id=r.id JOIN user_account a ON a.id=w.author_account_id WHERE r.state='PENDING' ORDER BY r.submitted_at,r.revision_id LIMIT ? OFFSET ?",(rs,n)->new ModerationViews.TargetSummary(rs.getString(1),rs.getString(2),rs.getString(3),rs.getString(4),rs.getTimestamp(5).toLocalDateTime().atOffset(ZoneOffset.UTC),"\"work-"+rs.getLong(6)+"\""),size,(page-1)*size);return PageResult.of(items,page,size,total);}
     @Transactional(readOnly=true) public ModerationViews.AdminPhotoSummary summary(String workId){PhotoWork w=workMapper.findByPublicId(workId);if(w==null)throw new BusinessException(ErrorCode.RESOURCE_NOT_FOUND);PhotoRevision working=w.getWorkingRevisionId()==null?null:revisionMapper.selectById(w.getWorkingRevisionId());boolean pending=working!=null&&"PENDING".equals(working.getState());if("DRAFT".equals(w.getPublicationState())&&!pending)throw new BusinessException(ErrorCode.RESOURCE_NOT_FOUND);PhotoRevision published=w.getPublicRevisionId()==null?null:revisionMapper.selectById(w.getPublicRevisionId());java.util.List<String> actions=new java.util.ArrayList<>();if(pending){actions.add("APPROVE");actions.add("REJECT");}if("PUBLISHED".equals(w.getPublicationState()))actions.add("OFFLINE");actions.add("DELETE");return new ModerationViews.AdminPhotoSummary(w.getWorkId(),w.getPublicationState(),working==null?null:working.getRevisionId(),working==null?null:working.getState(),published==null?null:published.getRevisionId(),java.util.List.copyOf(actions),tag(w));}
-    @Transactional(readOnly=true) public ModerationViews.Target target(Long reviewer,String workId,String revisionId){var rows=jdbc.query("SELECT w.id,w.work_id,w.author_account_id,w.row_version,r.id,r.revision_id,r.title,r.description,r.location,r.submitted_at,a.uid FROM photo_work w JOIN photo_revision r ON r.id=w.working_revision_id JOIN user_account a ON a.id=w.author_account_id WHERE w.work_id=? AND r.revision_id=? AND r.state='PENDING'",(rs,n)->{long rid=rs.getLong(5);var media=jdbc.queryForList("SELECT m.media_id FROM revision_media rm JOIN media_asset m ON m.id=rm.media_id WHERE rm.revision_id=? ORDER BY rm.position",String.class,rid);return new ModerationViews.Target(rs.getString(2),rs.getString(6),rs.getString(11),rs.getString(7),rs.getString(8),rs.getString(9),media,rs.getTimestamp(10).toLocalDateTime().atOffset(ZoneOffset.UTC),rs.getLong(3)==reviewer,"\"work-"+rs.getLong(4)+"\"");},workId,revisionId);if(rows.isEmpty())throw new BusinessException(ErrorCode.RESOURCE_NOT_FOUND);return rows.get(0);}
+    @Transactional(readOnly=true) public ModerationViews.Target target(Long reviewer,String workId,String revisionId){
+        var rows=jdbc.query("SELECT w.work_id,w.author_account_id,w.row_version,w.public_revision_id,w.published_at,"+
+                        "r.id,r.submitted_at,a.uid,p.username FROM photo_work w JOIN photo_revision r ON r.id=w.working_revision_id "+
+                        "JOIN user_account a ON a.id=w.author_account_id JOIN user_profile p ON p.account_id=a.id "+
+                        "WHERE w.work_id=? AND r.revision_id=? AND r.state='PENDING'",
+                (rs,n)->new TargetRow(rs.getString(1),rs.getLong(2),rs.getLong(3),(Long)rs.getObject(4),
+                        rs.getTimestamp(5)==null?null:rs.getTimestamp(5).toLocalDateTime(),rs.getLong(6),
+                        rs.getTimestamp(7).toLocalDateTime(),rs.getString(8),rs.getString(9)),workId,revisionId);
+        if(rows.isEmpty())throw new BusinessException(ErrorCode.RESOURCE_NOT_FOUND);
+        TargetRow row=rows.get(0);PhotoRevision target=revisionMapper.selectById(row.targetRevisionId());
+        PhotoRevision published=row.publicRevisionId()==null?null:revisionMapper.selectById(row.publicRevisionId());
+        return new ModerationViews.Target(row.workId(),workService.revisionView(target),
+                workService.publicRevisionView(published,row.publishedAt()),
+                new WorkViews.PublicAuthor(row.authorUid(),row.username(),null),
+                row.submittedAt().atOffset(ZoneOffset.UTC),reviewer!=null&&row.authorAccountId()==reviewer,
+                "\"work-"+row.rowVersion()+"\"");
+    }
     @Transactional(readOnly=true) public PageResult<ModerationViews.Event> history(String workId,int page,int size){if(page<1)throw new BusinessException(ErrorCode.INVALID_PAGE);if(size<1||size>100)throw new BusinessException(ErrorCode.INVALID_PAGE_SIZE);PhotoWork w=workMapper.findByPublicId(workId);if(w==null)throw new BusinessException(ErrorCode.RESOURCE_NOT_FOUND);long total=jdbc.queryForObject("SELECT COUNT(*) FROM moderation_event WHERE work_id=?",Long.class,w.getId());var rows=jdbc.query("SELECT e.event_id,r.revision_id,e.action,e.previous_state,e.resulting_state,sa.uid,ra.uid,e.reason,e.self_review,e.occurred_at FROM moderation_event e JOIN photo_revision r ON r.id=e.revision_id JOIN user_account sa ON sa.id=e.submitter_account_id LEFT JOIN user_account ra ON ra.id=e.reviewer_account_id WHERE e.work_id=? ORDER BY e.occurred_at DESC,e.event_id DESC LIMIT ? OFFSET ?",(rs,n)->new ModerationViews.Event(rs.getString(1),rs.getString(2),rs.getString(3),rs.getString(4),rs.getString(5),rs.getString(6),rs.getString(7),rs.getString(8),rs.getBoolean(9),rs.getTimestamp(10).toLocalDateTime().atOffset(ZoneOffset.UTC)),w.getId(),size,(page-1)*size);return PageResult.of(rows,page,size,total);}
 
     @Transactional(noRollbackFor = AccountUnavailableAfterReviewLock.class)
@@ -128,4 +148,8 @@ public class ReviewService {
     private static final class AccountUnavailableAfterReviewLock extends BusinessException {
         private AccountUnavailableAfterReviewLock() { super(ErrorCode.ACCOUNT_UNAVAILABLE); }
     }
+
+    private record TargetRow(String workId,long authorAccountId,long rowVersion,Long publicRevisionId,
+                             LocalDateTime publishedAt,long targetRevisionId,LocalDateTime submittedAt,
+                             String authorUid,String username){}
 }

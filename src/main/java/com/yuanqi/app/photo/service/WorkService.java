@@ -20,6 +20,7 @@ import com.yuanqi.app.photo.mapper.PhotoCategoryMapper;
 import com.yuanqi.app.photo.mapper.PhotoTagMapper;
 import com.yuanqi.app.photo.mapper.RevisionTagMapper;
 import com.yuanqi.app.photo.vo.WorkViews;
+import com.yuanqi.app.photo.vo.MediaViews;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -29,6 +30,7 @@ import java.time.Clock;
 import java.time.LocalDateTime;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
+import java.time.ZoneId;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
@@ -266,18 +268,55 @@ public class WorkService {
         WorkViews.Summary summary = new WorkViews.Summary(work.getWorkId(), work.getPublicationState(),
                 working == null ? null : working.getRevisionId(), working == null ? null : working.getState(),
                 utc(work.getPublishedAt()), utc(work.getUpdatedAt()), 0, 0, caps, tag(work.getRowVersion()));
-        return new WorkViews.AuthorWork(summary, revisionView(published), revisionView(working));
+        return new WorkViews.AuthorWork(summary, publicRevisionView(published, work.getPublishedAt()), revisionView(working));
     }
 
-    private WorkViews.Revision revisionView(PhotoRevision revision) {
+    public WorkViews.Revision revisionView(PhotoRevision revision) {
         if (revision == null) return null;
-        List<String> media = revisionMediaMapper.listByRevision(revision.getId()).stream()
-                .map(r -> mediaMapper.selectById(r.getMediaId())).filter(java.util.Objects::nonNull)
-                .map(MediaAsset::getMediaId).toList();
         return new WorkViews.Revision(revision.getRevisionId(), revision.getRevisionNumber(), revision.getState(),
-                revision.getOrigin(), revision.getTitle(), revision.getDescription(), revision.getLocation(), media,
+                revision.getOrigin(), revision.getTitle(), revision.getDescription(), revision.getLocation(),
+                category(revision), tags(revision), media(revision),
                 utc(revision.getCreatedAt()), utc(revision.getUpdatedAt()), utc(revision.getSubmittedAt()),
                 "\"revision-" + revision.getRowVersion() + "\"");
+    }
+
+    public WorkViews.PublicRevision publicRevisionView(PhotoRevision revision, LocalDateTime publishedAt) {
+        if (revision == null) return null;
+        return new WorkViews.PublicRevision(revision.getRevisionId(), revision.getRevisionNumber(), revision.getTitle(),
+                revision.getDescription(), revision.getLocation(), category(revision), tags(revision), media(revision),
+                utc(publishedAt));
+    }
+
+    private WorkViews.Category category(PhotoRevision revision) {
+        if (revision.getCategoryId() == null) return null;
+        PhotoCategory value = categoryMapper.selectById(revision.getCategoryId());
+        return value == null ? null : new WorkViews.Category(value.getPublicId(), value.getName(),
+                Boolean.TRUE.equals(value.getActive()), true);
+    }
+
+    private List<WorkViews.Tag> tags(PhotoRevision revision) {
+        return jdbc.query("SELECT t.tag_id,t.display_name FROM revision_tag rt JOIN photo_tag t ON t.id=rt.tag_id " +
+                        "WHERE rt.revision_id=? ORDER BY rt.position",
+                (rs, row) -> new WorkViews.Tag(rs.getString(1), rs.getString(2)), revision.getId());
+    }
+
+    private List<WorkViews.RevisionMedia> media(PhotoRevision revision) {
+        return revisionMediaMapper.listByRevision(revision.getId()).stream().map(relation -> {
+            MediaAsset asset = mediaMapper.selectById(relation.getMediaId());
+            if (asset == null || !"READY".equals(asset.getStatus()) || asset.getWebStorageKey() == null)
+                throw new BusinessException(ErrorCode.STATE_CONFLICT, "Revision 媒体未完成处理");
+            MediaViews.WebMedia web = new MediaViews.WebMedia(asset.getMediaId(),
+                    mediaMapper.isPublicWeb(asset.getId()) ? "PUBLIC_URL" : "BEARER_FETCH",
+                    "/api/v1/media/" + asset.getMediaId() + "/web", "image/jpeg",
+                    asset.getWidth(), asset.getHeight(), "\"media-" + asset.getRowVersion() + "\"");
+            WorkViews.PhotoParameters parameters = new WorkViews.PhotoParameters(
+                    relation.getCaptureTime() == null ? null
+                            : relation.getCaptureTime().atZone(ZoneId.of("Asia/Shanghai")).toOffsetDateTime(),
+                    relation.getCameraBody(), relation.getLens(), relation.getFocalLength(), relation.getAperture(),
+                    relation.getShutterSpeed(), relation.getIsoValue());
+            return new WorkViews.RevisionMedia(asset.getMediaId(), relation.getPosition(),
+                    relation.getPosition() == 1, web, parameters);
+        }).toList();
     }
 
     private PhotoWork lockOwned(String id, Long accountId) { return owned(workMapper.findByPublicIdForUpdate(id), accountId); }

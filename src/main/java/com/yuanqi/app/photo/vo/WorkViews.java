@@ -14,11 +14,40 @@ public final class WorkViews {
                                boolean canWithdraw, boolean canDelete) {
     }
 
+    @Schema(name = "PublicAuthorView")
+    public record PublicAuthor(String uid, String username, MediaViews.WebMedia avatar) {
+    }
+
+    @Schema(name = "CategoryView")
+    public record Category(String categoryId, String name, boolean selectable, boolean filterable) {
+    }
+
+    @Schema(name = "TagView")
+    public record Tag(String tagId, String name) {
+    }
+
+    @Schema(name = "PhotoParameters")
+    public record PhotoParameters(OffsetDateTime captureTime, String cameraBody, String lens,
+                                  String focalLength, String aperture, String shutterSpeed, String iso) {
+    }
+
+    @Schema(name = "RevisionMediaView")
+    public record RevisionMedia(String mediaId, int position, boolean cover, MediaViews.WebMedia web,
+                                PhotoParameters parameters) {
+    }
+
     @Schema(name = "AuthorRevisionView")
     public record Revision(String revisionId, int revisionNumber, String state, String origin,
                            String title, String description, String location,
-                           List<String> mediaIds, OffsetDateTime createdAt, OffsetDateTime updatedAt,
+                           Category category, List<Tag> tags, List<RevisionMedia> media,
+                           OffsetDateTime createdAt, OffsetDateTime updatedAt,
                            OffsetDateTime submittedAt, String versionTag) {
+    }
+
+    @Schema(name = "PublicRevisionSummary")
+    public record PublicRevision(String revisionId, int revisionNumber, String title, String description,
+                                 String location, Category category, List<Tag> tags,
+                                 List<RevisionMedia> media, OffsetDateTime publishedAt) {
     }
 
     @Schema(name = "AuthorWorkSummary")
@@ -28,7 +57,7 @@ public final class WorkViews {
     }
 
     @Schema(name = "AuthorWorkView")
-    public record AuthorWork(Summary summary, Revision currentPublicRevision, Revision workingRevision) {
+    public record AuthorWork(Summary summary, PublicRevision currentPublicRevision, Revision workingRevision) {
     }
 
     @Schema(name = "PhotoDeleteResult")

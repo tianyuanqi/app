@@ -105,7 +105,7 @@ public class MediaService {
     public MediaViews.Processing view(MediaAsset a) {
         MediaViews.WebMedia web = "READY".equals(a.getStatus()) ? new MediaViews.WebMedia(a.getMediaId(),
                 mapper.isPublicWeb(a.getId()) ? "PUBLIC_URL" : "BEARER_FETCH",
-                "/api/v1/media/" + a.getMediaId() + "/web", a.getMimeType(), a.getWidth(), a.getHeight(), tag(a)) : null;
+                "/api/v1/media/" + a.getMediaId() + "/web", "image/jpeg", a.getWidth(), a.getHeight(), tag(a)) : null;
         MediaViews.Failure failure = a.getFailureCode() == null ? null
                 : new MediaViews.Failure(a.getFailureCode(), "媒体处理未成功");
         return new MediaViews.Processing(a.getMediaId(), a.getClientUploadId(), a.getStatus(), a.getByteSize(),

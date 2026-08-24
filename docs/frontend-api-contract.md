@@ -5,6 +5,26 @@
 > 唯一来源：后端真实实现和运行中的 `GET /v3/api-docs`  
 > 本文是便于前端接入的人工索引；若与运行中的 OpenAPI 不一致，以后端实现和 `/v3/api-docs` 为准。
 
+## V1-BE-004 媒体消费者契约增量（2026-08-24）
+
+- `POST /api/v1/media/photos` 接受有效的 1200×1200 PNG 后先返回 `202` 与
+  `MediaProcessingView.status=PROCESSING`；处理成功后
+  `GET /api/v1/media/photos/{mediaId}` 返回 `READY`、原尺寸和 `web`。
+- Web 衍生图固定通过 `GET /api/v1/media/{mediaId}/web` 读取，响应 MIME 为
+  `image/jpeg`；私有媒体的 `web.accessMode=BEARER_FETCH`。响应只包含 API 相对 URL，
+  不返回 `original/`、`staging/` 或本机存储路径。
+- `AuthorRevisionView` 使用 `category`、`tags[]`、`media[]`，不再只返回
+  `mediaIds[]`。`media[]` 按 `position` 升序，`position=1` 为 `cover=true`；每项包含
+  `mediaId, position, cover, web, parameters`。
+- `ModerationTargetView.targetRevision` 使用同一完整 `AuthorRevisionView`；同时包含
+  `currentPublicRevision`（可空）与 `author`，管理员可直接渲染目标媒体，无需根据 ID
+  猜测私有存储地址。
+- 上述 Schema 与路径已经进入运行时 `/v3/api-docs`；具体 Required、Nullable、ErrorCode
+  和 Header 仍以对应后端 Commit 启动后的机器可读契约为准。
+
+> 提示：下文保留的是 2026-08-12 接管时的历史人工索引，其中认证、分页及旧兼容路径
+> 尚未按 v1.0 冻结契约整体重写，不能覆盖当前运行时 `/v3/api-docs`。
+
 ## 1. 通用约定
 
 - 本地 Base URL：`http://localhost:8080`

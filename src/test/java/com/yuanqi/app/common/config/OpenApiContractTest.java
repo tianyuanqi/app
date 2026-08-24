@@ -96,6 +96,21 @@ class OpenApiContractTest {
         assertThat(schemas.at("/WorkDraftRequest/properties/mediaIds/minItems").asInt()).isEqualTo(1);
         assertThat(schemas.at("/WorkDraftRequest/properties/mediaIds/maxItems").asInt()).isEqualTo(9);
         assertThat(schemas.at("/Comment/properties/content/maxLength").asInt()).isEqualTo(1000);
+
+        JsonNode authorRevision = schemas.path("AuthorRevisionView").path("properties");
+        assertThat(authorRevision.has("category")).isTrue();
+        assertThat(authorRevision.at("/tags/items/$ref").asText()).endsWith("/TagView");
+        assertThat(authorRevision.at("/media/items/$ref").asText()).endsWith("/RevisionMediaView");
+        assertThat(authorRevision.has("mediaIds")).isFalse();
+        assertThat(schemas.at("/RevisionMediaView/properties/web/$ref").asText()).endsWith("/WebMediaRef");
+        assertThat(schemas.at("/RevisionMediaView/properties/parameters/$ref").asText())
+                .endsWith("/PhotoParameters");
+
+        JsonNode moderationTarget = schemas.path("ModerationTargetView").path("properties");
+        assertThat(moderationTarget.at("/targetRevision/$ref").asText()).endsWith("/AuthorRevisionView");
+        assertThat(moderationTarget.at("/currentPublicRevision/$ref").asText()).endsWith("/PublicRevisionSummary");
+        assertThat(moderationTarget.at("/author/$ref").asText()).endsWith("/PublicAuthorView");
+        assertThat(moderationTarget.has("mediaIds")).isFalse();
     }
 
     private JsonNode openApi() throws Exception {
