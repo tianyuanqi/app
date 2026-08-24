@@ -1,234 +1,169 @@
-status: partially_ready
-as_of: "2026-08-12"
-phase: takeover_acceptance
+status: development_incomplete
+as_of: "2026-08-24"
+phase: v1_backend_development
+work_package: V1-BE-001
+release: 2400px-v1.0
+requirements_baseline: v1.0-REQ-R4
+human_gate_3: Passed
 
-backend_repository: tianyuanqi/app
-branch: master
-git_state_at_takeover:
-  worktree_clean_before_acceptance_changes: true
-  local_commits_ahead_of_origin: 2
-  history_rewritten: false
+repository:
+  path: /Users/yuanqi/2400px/app
+  branch: codex/v1-backend
+  source_commit: e80f9257e7213d5bebac29bfd170b067563f010a
+  current_commit_before_handoff_update: 648fae673c1ed18bb165a1c889e7938b0d76182f
+  remote_modified: false
+  pushed: false
+  pull_request_created: false
+  merged: false
+  tagged: false
 
-runtime:
-  base_url: http://localhost:8080
-  default_profile: local
-  start_command: java -jar target/app-0.0.1-SNAPSHOT.jar
-  source_start_command: ./mvnw spring-boot:run
+takeover_baseline:
+  adr: ADR-0005
+  baseline_commit: e0532be
+  source_archive_verified: true
+  old_database_read_or_modified: false
+
+environment:
   java: 17.0.18
+  maven: 3.9.14
+  mysql_client: 8.0.30
   spring_boot: 3.5.16
-  database: MySQL 8.0
-  database_schema: blog
-  flyway_current_version: 5
-  flyway_validation: passed
-  health_status: UP
+  runtime_profile: local
+  isolated_development_schema: px2400_v1_dev
+  isolated_test_schema: px2400_v1_test2
+  flyway_schema_version: 13
 
-contract:
-  source_of_truth:
-    - backend_implementation
-    - http://localhost:8080/v3/api-docs
-  frontend_guide: docs/frontend-api-contract.md
-  swagger_url: http://localhost:8080/swagger-ui.html
-  openapi_url: http://localhost:8080/v3/api-docs
-  actuator_health: http://localhost:8080/actuator/health
+implementation_slices:
+  - commit: 0df928f
+    scope: v1 基础设施、全新数据库模型、统一错误、CSRF/CORS 与确定性参考数据
+  - commit: 3fc0118
+    scope: 邮箱验证码、注册登录、固定会话、刷新旋转、锁定限流与用户资料
+  - commit: c63483b
+    scope: Work/Revision/Media、审核状态机、点赞与两级评论
+  - commit: de36ced
+    scope: 公开发现、稳定分页、注册恢复与彻底删除
+  - commit: 648fae6
+    scope: 头像、作者视图、审核读取与管理员治理查询
+
+runtime_contract:
+  authority: http://127.0.0.1:8080/v3/api-docs
+  evidence_file: /private/tmp/2400px-v1-openapi-final.json
+  sha256: 9b1d60975d235ab1f8e85aba1330371c52dc9c38df71ebf929ec968e5eb83e66
+  bytes: 24843
+  paths: 39
+  operations: 49
   api_prefix: /api/v1
-  response_envelope: '{code, message, data}'
-  authorization_header: 'Authorization: Bearer <accessToken>'
-  public_user_identifier: uid
+  response_envelope: "{code, message, data}"
+  legacy_home_paths_present: false
+  note: 该文件是本机临时证据，不是已提交的静态契约；运行时输出仍以对应 Commit 启动后的 /v3/api-docs 为准。
 
 verification:
-  compile:
-    command: ./mvnw -DskipTests clean package
+  clean_verify:
+    command: ./mvnw clean verify
     result: passed
-    notes:
-      - 70 main source files compiled
-      - executable JAR generated
-      - HomeService reports a deprecated API compile warning
-  startup:
+    tests_run: 9
+    failures: 0
+    errors: 0
+    skipped: 0
+  tests:
+    - { suite: AppApplicationTests, count: 1, result: passed }
+    - { suite: AuthPolicyTest, count: 3, result: passed }
+    - { suite: CsrfTokenServiceTest, count: 1, result: passed }
+    - { suite: UnicodeTextTest, count: 4, result: passed }
+  fresh_database:
     result: passed
-    profile: local
-    port: 8080
-  database_connection: passed
-  flyway:
+    schema: px2400_v1_test2
+    migrations: V1-V13
+    note: 第一个隔离测试 schema 因 V13 初稿失败后未清理或修复，改用新的空 schema 重新验证完整迁移链。
+  runtime_startup:
     result: passed
-    schema_version: 5
-    migrations_validated: 6
-    migration_needed: false
+    schema: px2400_v1_dev
+    migrations_validated: 13
   health_check:
     result: passed
     status: UP
-    db_component: UP
-  openapi_metadata:
+    database_component: UP
+  openapi_export:
     result: passed
-    paths: 24
-    operations: 28
-    public_operations_without_bearer: verified
-    protected_operations_with_bearer: verified
-    search_and_feed_query_parameters_expanded: verified
-  manual_api_smoke:
-    passed:
-      - public categories
-      - public home feed
-      - public hot tags
-      - public photo search
-      - user login and access authentication
-      - unauthenticated access rejection
-      - current user profile
-      - public user profile
-      - owner pending photo visibility
-      - non-owner pending photo concealment as 404
-      - user moderation rejection as 403
-      - admin pending moderation list
-    failed:
-      - refresh token rotation
-      - seed photo static resource
-      - seed avatar static resource
-    not_executed_to_avoid_business_mutation:
-      - register
-      - update profile
-      - change password
-      - upload
-      - update photo
-      - delete photo
-      - submit photo
-      - approve photo
-      - reject photo
-      - offline photo
-  automated_tests:
-    result: not_run
-    reason: phase explicitly excludes writing or running business automation; build used -DskipTests
+    hash_recorded: true
+
+implemented_capabilities:
+  authentication:
+    - 邮箱验证码发送、注册、登录、Refresh 旋转与 Logout
+    - Access 15 分钟、Session 固定 7 天、HttpOnly Cookie、CSRF 与 Origin 校验
+    - 登录失败锁定、验证码及登录限流、禁用账号撤销 Session
+  profile:
+    - 私有当前用户资料与公开 Profile 分离
+    - 公开 uid、ETag 乐观并发、Asia/Shanghai 年龄计算、头像上传
+  photo_and_media:
+    - 草稿、提交、撤回、驳回重提、公开与待审修改并存
+    - 1 至 9 图顺序、首图封面、私有原图与 Web 衍生图、失败重试入口
+    - 作者视图、公开详情、分类与 Unicode 归一化标签
+  moderation:
+    - 待审队列、目标详情、历史、批准、驳回、下架及恢复
+    - 允许管理员自审并记录 selfReview
+    - 审核事件与乐观并发版本
+  interaction:
+    - 唯一点赞、取消点赞、允许作者自赞
+    - 两级评论、回复分页、删除占位与管理员删除
+  discovery:
+    - 公开状态过滤、五类关键词字段、分类标签组合与稳定页码分页
+  governance:
+    - 管理员只治理普通用户，记录原因、操作者、动作与时间
+    - 查询返回隔离邮箱和完整生日
 
 integration_readiness:
   backend_overall_ready: false
-  frontend_can_integrate: partially
-  ready_scopes:
-    - public home feed/categories/hot-tags
-    - public photo search/detail contract
-    - public user profile/photo wall
-    - login plus accessToken protected reads
-    - current user profile read
-    - my photo list read
-    - admin pending list and role boundary
-  blocked_scopes:
-    - refresh token rotation and reuse protection
-    - reliable logout/session revocation
-    - login failure lock policy
-    - seed image/avatar rendering
-  write_scopes_need_dedicated_acceptance_data:
-    - registration and profile/password mutation
-    - upload/edit/delete/submit
-    - approve/reject/offline
+  frontend_can_integrate: false
+  tester_can_accept: false
+  reason: 核心路径已物化并可生成运行时契约，但冻结契约要求的幂等、EXIF、邮件生产适配、补偿清理与契约级测试尚未闭环。
 
-breaking_changes:
-  present: false
-  notes:
-    - No route, request field, response field, or business behavior was intentionally changed during takeover acceptance.
-    - OpenAPI metadata was corrected so public operations are no longer globally marked Bearer and protected operations declare Bearer explicitly.
-    - Search and feed query objects are expanded into individual OpenAPI query parameters; runtime request behavior is unchanged.
-
-implemented_apis:
-  - { method: POST, path: /api/v1/auth/login, authentication: public, request: 'JSON {account,password}' }
-  - { method: POST, path: /api/v1/auth/register, authentication: public, request: 'JSON {username,password,email}' }
-  - { method: POST, path: /api/v1/auth/token/refresh, authentication: public, request: 'JSON {refreshToken}', readiness: blocked }
-  - { method: POST, path: /api/v1/auth/logout, authentication: bearer, request: 'JSON {refreshToken}', readiness: blocked }
-  - { method: GET, path: /api/v1/users/me, authentication: bearer }
-  - { method: PUT, path: /api/v1/users/me, authentication: bearer, request: 'JSON {email?,birth?,gender?,bio?,avatarUrl?}' }
-  - { method: PUT, path: /api/v1/users/me/password, authentication: bearer, request: 'JSON {oldPassword,newPassword}' }
-  - { method: GET, path: '/api/v1/users/{uid}', authentication: public }
-  - { method: GET, path: '/api/v1/users/{uid}/photos', authentication: public, query: [current, pageSize] }
-  - { method: GET, path: /api/v1/home/feed, authentication: public, query: [current, pageSize, categoryId, tag, keyword, sort] }
-  - { method: GET, path: /api/v1/home/categories, authentication: public }
-  - { method: GET, path: /api/v1/home/hot-tags, authentication: public, query: [limit] }
-  - { method: GET, path: /api/v1/photos, authentication: public, aliases: [/api/v1/photos/list], response: 'Page<PhotoCardVO>' }
-  - { method: GET, path: /api/v1/photos/mine, authentication: bearer, aliases: [/api/v1/photos/my-list], query: [current, pageSize, status] }
-  - { method: GET, path: '/api/v1/photos/{id}', authentication: 'public for PUBLISHED; otherwise owner or ADMIN' }
-  - { method: PUT, path: '/api/v1/photos/{id}', authentication: 'bearer + owner', request: 'JSON {title?,description?,location?,categoryId?,tags?}' }
-  - { method: DELETE, path: '/api/v1/photos/{id}', authentication: 'bearer + owner' }
-  - { method: POST, path: '/api/v1/photos/{id}/submit', authentication: 'bearer + owner' }
-  - { method: POST, path: /api/v1/photos, authentication: bearer, aliases: [/api/v1/photos/upload], content_type: multipart/form-data, request_fields: [file, title, description, location, category, tag] }
-  - { method: GET, path: /api/v1/categories, authentication: public, aliases: [/api/v1/categories/list] }
-  - { method: GET, path: /api/v1/moderation/photos, authentication: 'bearer + ADMIN', query: [current, pageSize] }
-  - { method: POST, path: '/api/v1/moderation/photos/{id}/approve', authentication: 'bearer + ADMIN' }
-  - { method: POST, path: '/api/v1/moderation/photos/{id}/reject', authentication: 'bearer + ADMIN', request: 'optional JSON {reason?}' }
-  - { method: POST, path: '/api/v1/moderation/photos/{id}/offline', authentication: 'bearer + ADMIN' }
-
-known_issues:
-  - id: AUTH-001
+blocking_gaps:
+  - id: V1-BE-GAP-001
     priority: P0
-    area: refresh_token
-    summary: Refresh JWT jti does not match auth_session.jti, so a newly issued refresh token returns 40102.
-    evidence: JwtService creates a custom jti claim and buildToken later overwrites the standard JWT ID; AuthSessionService reads claims.get('jti') and queries the database by the original generated jti.
-    impact: Access tokens work until expiry, but token refresh and documented rotation cannot be used.
-
-  - id: AUTH-002
+    area: idempotency
+    summary: 除验证码发送的格式校验外，写 Operation 尚未实现统一 Idempotency-Key 持久化、同载荷重放和冲突语义。
+  - id: V1-BE-GAP-002
     priority: P0
-    area: session_revocation
-    summary: Logout may return 200 without revoking the database session.
-    evidence: revokeByRefreshToken treats a missing session as idempotent success; the user1 and admin acceptance sessions remained active in auth_session after their logout calls.
-    impact: Frontend cannot rely on logout to invalidate refresh sessions.
-
-  - id: AUTH-003
+    area: contract
+    summary: OpenAPI 尚未为每个 Operation 闭合 ErrorCode、错误响应、幂等 Header 与全部 DTO 约束。
+  - id: V1-BE-GAP-003
     priority: P0
-    area: authentication_security
-    summary: Login failure counters/lock and refresh reuse revocation are updated inside transactions that rethrow RuntimeException.
-    evidence: AuthService.login and refresh use rollbackFor=Exception and throw BusinessException after security updates.
-    impact: Security state updates are at high risk of rollback; lock and reuse protection require correction and re-verification.
-
-  - id: MEDIA-001
+    area: testability
+    summary: 当前仅 9 个基础测试，缺少认证会话、权限、领域状态机、并发、分页、Migration 与 OpenAPI 契约集成测试。
+  - id: V1-BE-GAP-004
     priority: P1
-    area: static_resources
-    summary: V5 seed photo and avatar URLs point to files that are not present.
-    evidence: GET seed photo/avatar returned HTTP 500; NoResourceFoundException is handled as INTERNAL_ERROR instead of 404.
-    impact: Seed feed/profile cards cannot render their images and missing resources produce the wrong HTTP status.
-
-  - id: DB-001
+    area: exif
+    summary: 尚未实现 EXIF 提取、逐图拍摄时间覆盖、未来 EXIF 警告及 Asia/Shanghai 序列化闭环。
+  - id: V1-BE-GAP-005
     priority: P1
-    area: seed_migration
-    summary: V5 uses fixed category IDs that already have different meanings in an existing database.
-    evidence: Seed titles expected as landscape/portrait/street map to existing categories such as 未指定, 建筑, 自然风光.
-    impact: Seed content category semantics are incorrect on an existing schema.
-
-  - id: PHOTO-001
+    area: mail
+    summary: 仅有本地 Mail Sink；生产邮件 Port 未接入真实 Provider。
+  - id: V1-BE-GAP-006
     priority: P1
-    area: category_mapping
-    summary: Some photo cards return category null.
-    evidence: Public feed smoke returned category=null for V5 seed records.
-    impact: Frontend must tolerate null until data/mapping repair; it should not invent a category.
-
-  - id: FILE-001
+    area: media_cleanup
+    summary: 媒体处理、失败重试和基础删除已实现，但孤儿对账、跨 DB/文件补偿、彻底清理证据及 Worker 确定性尚未完整验证。
+  - id: V1-BE-GAP-007
+    priority: P1
+    area: response_compatibility
+    summary: 管理员彻底删除返回类型、头像裁剪参数等消费者细节仍需按冻结目标契约补齐并复审。
+  - id: V1-BE-GAP-008
     priority: P2
-    area: upload_storage
-    summary: The local upload default is a machine-specific absolute path and file writes are not transactionally coupled to database writes.
-    impact: Environment portability and orphan-file cleanup need explicit handling.
-
-  - id: PERF-001
+    area: persistence
+    summary: 复合主键实体启动时仍有 MyBatis-Plus 无 TableId 警告，必须持续禁止误用 ById API。
+  - id: V1-BE-GAP-009
     priority: P2
-    area: query_performance
-    summary: PhotoAssembler performs per-record author/category lookups and hot-tags loads published IDs and relations into memory.
-    impact: Feed, search, walls and hot tags will degrade as data volume grows.
+    area: security_hardening
+    summary: 启动日志仍出现未使用的 Spring 默认内存用户密码，生产加固前应移除默认认证 Bean。
 
-  - id: BUILD-001
-    priority: P2
-    area: build
-    summary: HomeService compiles with a deprecated API warning.
+database_safety:
+  old_database_migrated: false
+  old_database_cleaned: false
+  old_database_read: false
+  failed_isolated_schema_modified_after_failure: false
+  production_profile_sample_business_data_added: false
 
-  - id: SEC-001
-    priority: P2
-    area: spring_security
-    summary: Startup still creates an unused development in-memory user and logs a generated password.
-    impact: JWT routes use the custom filter chain, but the unused default authentication bean should be removed before production hardening.
-
-  - id: ORM-001
-    priority: P3
-    area: mybatis_plus
-    summary: PhotoTagRelation has a composite primary key but no TableId, producing startup warnings.
-    impact: Wrapper-based operations work; ById APIs must not be used for this entity.
-
-recommended_priorities:
-  - order: 1
-    scope: Fix AUTH-001, AUTH-002 and AUTH-003 together, then re-verify login, refresh rotation, reuse detection, logout and lock policy.
-  - order: 2
-    scope: Repair V5 category seeding with a new append-only migration; restore valid seed media or stop returning nonexistent URLs; map missing static resources to 404.
-  - order: 3
-    scope: Validate upload and moderation write flows with isolated acceptance data, including file cleanup behavior.
-  - order: 4
-    scope: Address N+1 queries, hot-tags memory aggregation, environment portability and ORM/build warnings before scale work.
+handoff_conclusion:
+  result: blocked
+  summary: 已完成接管基线、主要领域骨架、空库 V1-V13、Build 与运行时 OpenAPI 证据，但尚不满足完整 R4 Backend Acceptance Criteria，不能标记可联调、可测试或开发完成。
+  required_next_action: 继续在同一授权分支逐项关闭 V1-BE-GAP-001 至 V1-BE-GAP-009，并补齐域级集成与契约证据后重新评估。
