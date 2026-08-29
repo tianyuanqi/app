@@ -1,7 +1,8 @@
 status: development_incomplete
-as_of: "2026-08-24"
+as_of: "2026-08-29"
 phase: v1_backend_development
-work_package: V1-BE-004
+work_package: V1-BE-005
+workflow_revision: WF-2026-08-28-02
 release: 2400px-v1.0
 requirements_baseline: v1.0-REQ-R4
 human_gate_3: Passed
@@ -9,8 +10,8 @@ human_gate_3: Passed
 repository:
   path: /Users/yuanqi/2400px/app
   branch: codex/v1-backend
-  source_commit: 20850676c046a2ebdbaaea849087f5d4246cec63
-  current_commit_before_handoff_update: 496206d
+  source_commit: 96015a591befe4b99f7df6d945a636344a0fed73
+  current_commit_before_handoff_update: 3ab2a34
   remote_modified: false
   pushed: false
   pull_request_created: false
@@ -30,8 +31,9 @@ environment:
   spring_boot: 3.5.16
   runtime_profile: local
   isolated_development_schema: px2400_v1_dev
-  isolated_test_schema: px2400_v1_be004_finalcommit_20260824
-  isolated_runtime_schema: px2400_v1_be004_runtime_20260824
+  isolated_targeted_schema: px2400_v1_be005_targeted_20260829
+  isolated_test_schema: px2400_v1_be005_verify_20260829
+  isolated_runtime_schema: px2400_v1_be005_runtime_20260829
   flyway_schema_version: 14
 
 implementation_slices:
@@ -57,11 +59,13 @@ implementation_slices:
     scope: 全套 Spring 测试固定使用 test Profile，禁止回落到开发 Schema
   - commit: 496206d
     scope: 有效 PNG 确定性处理、Web JPEG 衍生图，以及作者 Revision/审核 Target 完整媒体消费者 DTO
+  - commit: 3ab2a34
+    scope: 分类公开 ID 显式映射与待审目标 Web 媒体的管理员受限读取
 
 runtime_contract:
-  authority: http://127.0.0.1:18084/v3/api-docs
-  evidence_file: /private/tmp/2400px-v1-be004-runtime-openapi.json
-  sha256: e6862a8cee8f025ad538d419af331ac80f0edd0834f8e9db05da61d9de1f21ef
+  authority: http://127.0.0.1:18085/v3/api-docs
+  evidence_file: /private/tmp/2400px-v1-be005-runtime-openapi.json
+  sha256: 36c01c8470d76ad1a244ae2196c10890066ab838217c8340475bd95b84629a70
   bytes: 330468
   paths: 40
   operations: 51
@@ -74,7 +78,7 @@ verification:
   clean_verify:
     command: ./mvnw clean verify
     result: passed
-    tests_run: 30
+    tests_run: 32
     failures: 0
     errors: 0
     skipped: 0
@@ -87,16 +91,16 @@ verification:
     - { suite: StrongEtagTest, count: 2, result: passed }
     - { suite: OpenApiContractTest, count: 3, result: passed }
     - { suite: AdminContractSecurityTest, count: 2, result: passed }
-    - { suite: BackendP0IntegrationMatrixTest, count: 8, result: passed }
+    - { suite: BackendP0IntegrationMatrixTest, count: 10, result: passed }
     - { suite: MediaProcessorIntegrationTest, count: 3, result: passed }
   fresh_database:
     result: passed
-    schema: px2400_v1_be004_finalcommit_20260824
+    schema: px2400_v1_be005_verify_20260829
     migrations: V1-V14
     note: 该 Schema 从空状态一次性成功应用 V1～V14；没有复用失败后修改的 Schema。
   runtime_startup:
     result: passed
-    schema: px2400_v1_be004_runtime_20260824
+    schema: px2400_v1_be005_runtime_20260829
     migrations_validated: 14
   health_check:
     result: passed
@@ -121,6 +125,8 @@ integration_matrix:
   - { invariant: 我的作品页码分页稳定且无跨页重复, test: BackendP0IntegrationMatrixTest.我的作品稳定分页使用更新时间与公开ID确定性排序 }
   - { invariant: 审核队列同时间使用 revisionId 稳定排序, test: BackendP0IntegrationMatrixTest.审核队列同提交时间按Revision公开ID稳定排序 }
   - { invariant: 作者 Revision 与审核 Target 返回分类、标签和完整有序 Web 媒体, test: BackendP0IntegrationMatrixTest.作者Revision与审核Target无损返回分类标签和有序Web媒体 }
+  - { invariant: 分类公开 ID 为真实唯一字符串并经草稿创建、Revision 读取和二次保存无损往返, test: BackendP0IntegrationMatrixTest.分类公开ID序列化与作品草稿往返保持一致 }
+  - { invariant: 待审目标 Web 媒体仅作者和管理员可读，普通他人、匿名与无关私有媒体保持防枚举, test: BackendP0IntegrationMatrixTest.待审目标Web媒体权限矩阵保持最小授权 }
   - { invariant: 有效 1200×1200 PNG 从 PROCESSING 到 READY 并生成 JPEG 衍生图, test: MediaProcessorIntegrationTest.有效1200方形PNG从PROCESSING进入READY并生成JPEG衍生图 }
   - { invariant: 损坏媒体确定失败且暂存清理，临时处理失败可重试并保持 ClientUploadId 单一 Asset, test: MediaProcessorIntegrationTest }
   - { invariant: 未认证及普通用户先于资源和 ETag 校验失败, test: AdminContractSecurityTest }
@@ -139,6 +145,8 @@ implemented_capabilities:
     - 作者视图、公开详情、分类与 Unicode 归一化标签
     - 有效 1200×1200 PNG 确定进入 READY，并生成 MIME 为 image/jpeg 的 Web 衍生图
     - 作者 Revision 与审核 Target 返回 category、tags、有序 media、Web 引用和非空 parameters
+    - 分类接口返回 11 个唯一非空公开 categoryId，草稿二次保存保持分类无损
+    - 待审 Target 的 BEARER_FETCH Web 媒体仅向作者和具备审核权限的管理员开放
   moderation:
     - 待审队列、目标详情、历史、批准、驳回、下架及恢复
     - 允许管理员自审并记录 selfReview
@@ -156,9 +164,21 @@ integration_readiness:
   backend_overall_ready: false
   frontend_can_integrate: true
   tester_can_accept: true
-  reason: FE-V1-RUNTIME-002 与 FE-V1-CONTRACT-003 已闭环，且 V1-BE-GAP-001～003、ADR 0006 保持关闭；整体开发仍因明确保留的其他 P1/P2 未完成而不是 release-ready。
+  reason: FE-V1-CONTRACT-004 与 FE-V1-RUNTIME-003 已达到可供 Frontend 验证，且既有 P0 保持关闭；最终 CLOSED 需 Coordinator 回收 Frontend Regression，整体开发仍因明确保留的其他 P1/P2 未完成而不是 release-ready。
 
 frontend_runtime_findings:
+  FE-V1-CONTRACT-004:
+    status: ready_for_frontend_verification
+    evidence:
+      - GET /api/v1/categories 真实 HTTP 返回 11 个唯一、非空字符串公开 ID，字符串 null 计数为 0，并包含 cat_landscape
+      - 分类经草稿创建、作者 Revision 读取、PUT 二次保存与审核 Target 保持 cat_landscape
+      - 运行时 OpenAPI 明确 CategoryView.categoryId 为 string
+  FE-V1-RUNTIME-003:
+    status: ready_for_frontend_verification
+    evidence:
+      - 审核 Target Web 媒体真实 HTTP：作者 200、管理员 200、普通他人 404、匿名 404
+      - 管理员访问无关用户私有 Web 媒体仍为 404/RESOURCE_NOT_FOUND
+      - 作者与管理员响应字节一致，Content-Type image/jpeg、ETag media-1，Target 路径泄漏计数为 0
   FE-V1-RUNTIME-002:
     status: closed
     evidence:
@@ -244,5 +264,6 @@ database_safety:
 
 handoff_conclusion:
   result: pass_with_findings
-  summary: FE-V1-RUNTIME-002 与 FE-V1-CONTRACT-003 已关闭；Commit 496206d 在全新空库 V1～V14 上通过 30 个测试，并具备健康检查、真实 HTTP PNG→READY/Web JPEG、作者 Revision/审核 Target 与运行时 OpenAPI 证据。Backend 整体仍因本任务禁止处理的其他 P1/P2 保持 development_incomplete。
-  required_next_action: Frontend 与 Tester 可复验本工作包两项 Finding；其他 V1-BE-GAP-004～009 仅按 Coordinator 后续顺序工作包处理，本任务未扩大其状态或范围。
+  summary: FE-V1-CONTRACT-004 与 FE-V1-RUNTIME-003 已达到可供 Frontend 验证；Commit 3ab2a34 在全新空库 V1～V14 上通过 32 个测试，并具备健康检查、真实 HTTP 分类 round-trip、审核媒体权限矩阵与运行时 OpenAPI 证据。Backend 整体仍因本任务禁止处理的其他 P1/P2 保持 development_incomplete。
+  required_next_action: Coordinator 应派发 Frontend Regression 并回收证据后决定两项 Finding 是否最终 CLOSED；其他 V1-BE-GAP-004～009 仅按后续顺序工作包处理，本任务未扩大其状态或范围。
+  detailed_evidence: /Users/yuanqi/2400px/app/handoff/evidence/v1-be-005-category-moderation-media-closure.md
