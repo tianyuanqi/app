@@ -3,6 +3,8 @@ package com.yuanqi.app.photo.service;
 import com.yuanqi.app.auth.support.PublicIdGenerator;
 import com.yuanqi.app.common.api.ErrorCode;
 import com.yuanqi.app.common.exception.BusinessException;
+import com.yuanqi.app.common.exception.RequestValidationException;
+import com.yuanqi.app.common.api.ErrorResult;
 import com.yuanqi.app.common.http.StrongEtag;
 import com.yuanqi.app.common.text.UnicodeText;
 import com.yuanqi.app.photo.dto.WorkRequests;
@@ -33,6 +35,8 @@ import java.time.ZoneOffset;
 import java.time.ZoneId;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -231,23 +235,90 @@ public class WorkService {
         if (values == null || values.isEmpty()) return Map.of();
         if (values.size() > 9) throw new BusinessException(ErrorCode.VALIDATION_FAILED);
         Set<String> allowed = new HashSet<>(mediaIds);
-        Map<String, WorkRequests.PhotoParameters> result = new HashMap<>();
-        for (WorkRequests.MediaParameters value : values) {
-            if (value == null || value.mediaId() == null || value.parameters() == null
-                    || !allowed.contains(value.mediaId()) || result.put(value.mediaId(), value.parameters()) != null) {
-                throw new BusinessException(ErrorCode.VALIDATION_FAILED, "逐图参数必须唯一对应当前草稿媒体");
+        Map<String, WorkRequests.PhotoParameters> result = new LinkedHashMap<>();
+        List<ErrorResult.FieldError> fields = new ArrayList<>();
+        Map<Integer, String> invalidItems = new LinkedHashMap<>();
+        for (int index = 0; index < values.size(); index++) {
+            WorkRequests.MediaParameters value = values.get(index);
+            if (value == null) {
+                field(fields, invalidItems, index, null, "", "REQUIRED", "逐图参数项不能为空");
+                continue;
+            }
+            String mediaId = value.mediaId();
+            if (mediaId == null || mediaId.isBlank()) {
+                field(fields, invalidItems, index, mediaId, ".mediaId", "REQUIRED", "mediaId 不能为空");
+            } else if (!allowed.contains(mediaId)) {
+                field(fields, invalidItems, index, mediaId, ".mediaId", "MEDIA_NOT_IN_DRAFT",
+                        "mediaId 必须属于当前草稿媒体列表");
+            } else if (result.containsKey(mediaId)) {
+                field(fields, invalidItems, index, mediaId, ".mediaId", "DUPLICATE_MEDIA",
+                        "同一媒体只能提供一项拍摄参数");
+            }
+            if (value.parameters() == null) {
+                field(fields, invalidItems, index, mediaId, ".parameters", "REQUIRED", "parameters 不能为空");
+            } else {
+                validateManual(index, mediaId, value.parameters(), fields, invalidItems);
+            }
+            if (mediaId != null && !mediaId.isBlank() && allowed.contains(mediaId)
+                    && !result.containsKey(mediaId) && value.parameters() != null) {
+                result.put(mediaId, value.parameters());
             }
         }
+        if (!fields.isEmpty()) throw structured(fields, invalidItems);
         return result;
+    }
+
+    private void validateManual(int index, String mediaId, WorkRequests.PhotoParameters input,
+                                List<ErrorResult.FieldError> fields, Map<Integer, String> invalidItems) {
+        if (input.captureTime() != null) {
+            LocalDateTime shanghai = input.captureTime().atZoneSameInstant(ExifExtractor.SHANGHAI).toLocalDateTime();
+            LocalDateTime current = LocalDateTime.ofInstant(clock.instant(), ExifExtractor.SHANGHAI);
+            if (shanghai.isAfter(current)) {
+                field(fields, invalidItems, index, mediaId, ".parameters.captureTime",
+                        "CAPTURE_TIME_IN_FUTURE", "拍摄时间不能晚于当前 Asia/Shanghai 时间");
+            }
+        }
+        validateParameterText(index, mediaId, "cameraBody", input.cameraBody(), 100, fields, invalidItems);
+        validateParameterText(index, mediaId, "lens", input.lens(), 100, fields, invalidItems);
+        validateParameterText(index, mediaId, "focalLength", input.focalLength(), 50, fields, invalidItems);
+        validateParameterText(index, mediaId, "aperture", input.aperture(), 50, fields, invalidItems);
+        validateParameterText(index, mediaId, "shutterSpeed", input.shutterSpeed(), 50, fields, invalidItems);
+        validateParameterText(index, mediaId, "iso", input.iso(), 50, fields, invalidItems);
+    }
+
+    private void validateParameterText(int index, String mediaId, String name, String raw, int max,
+                                       List<ErrorResult.FieldError> fields, Map<Integer, String> invalidItems) {
+        if (raw == null) return;
+        String value = UnicodeText.nfc(UnicodeText.trimUnicode(raw));
+        if (value == null || value.isEmpty()) return;
+        if (UnicodeText.graphemeCount(value) > max) {
+            field(fields, invalidItems, index, mediaId, ".parameters." + name, "MAX_GRAPHEME_LENGTH",
+                    "拍摄参数超过最大可见字符数");
+        } else if (UnicodeText.containsForbiddenControl(value, false)
+                || value.contains("\n") || value.contains("\r")) {
+            field(fields, invalidItems, index, mediaId, ".parameters." + name, "INVALID_TEXT",
+                    "拍摄参数必须为单行纯文本");
+        }
+    }
+
+    private void field(List<ErrorResult.FieldError> fields, Map<Integer, String> invalidItems,
+                       int index, String mediaId, String suffix, String code, String message) {
+        fields.add(new ErrorResult.FieldError("mediaParameters[" + index + "]" + suffix, code, message));
+        invalidItems.putIfAbsent(index, mediaId);
+    }
+
+    private RequestValidationException structured(List<ErrorResult.FieldError> fields,
+                                                   Map<Integer, String> invalidItems) {
+        List<ErrorResult.ItemError> items = invalidItems.values().stream()
+                .map(mediaId -> new ErrorResult.ItemError(null, mediaId, "INVALID_MEDIA_PARAMETERS",
+                        "该媒体包含无效拍摄参数", false))
+                .toList();
+        return new RequestValidationException(fields, items);
     }
 
     private void applyManual(RevisionMedia target, WorkRequests.PhotoParameters input) {
         if (input.captureTime() != null) {
             LocalDateTime shanghai = input.captureTime().atZoneSameInstant(ExifExtractor.SHANGHAI).toLocalDateTime();
-            LocalDateTime current = LocalDateTime.ofInstant(clock.instant(), ExifExtractor.SHANGHAI);
-            if (shanghai.isAfter(current)) {
-                throw new BusinessException(ErrorCode.VALIDATION_FAILED, "拍摄时间不能晚于当前 Asia/Shanghai 时间");
-            }
             target.setCaptureTime(shanghai);
         }
         target.setCameraBody(parameterText(input.cameraBody(), 100));
@@ -289,10 +360,6 @@ public class WorkService {
         if (raw == null) return null;
         String value = UnicodeText.nfc(UnicodeText.trimUnicode(raw));
         if (value == null || value.isEmpty()) return null;
-        if (UnicodeText.graphemeCount(value) > max || UnicodeText.containsForbiddenControl(value, false)
-                || value.contains("\n") || value.contains("\r")) {
-            throw new BusinessException(ErrorCode.VALIDATION_FAILED, "拍摄参数必须为范围内的单行纯文本");
-        }
         return value;
     }
 

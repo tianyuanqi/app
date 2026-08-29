@@ -20,7 +20,7 @@ public final class WorkRequests {
                         String categoryId,
                         @Size(max = 5) List<@Size(min = 1, max = 20) String> tags,
                         @NotNull @Size(min = 1, max = 9) List<String> mediaIds,
-                        @Size(max = 9) List<@Valid MediaParameters> mediaParameters) {
+                        @Size(max = 9) List<@NotNull @Valid MediaParameters> mediaParameters) {
         public Draft(String title, String description, String location, String categoryId,
                      List<String> tags, List<String> mediaIds) {
             this(title, description, location, categoryId, tags, mediaIds, null);

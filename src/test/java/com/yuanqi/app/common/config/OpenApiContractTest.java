@@ -81,7 +81,8 @@ class OpenApiContractTest {
     }
 
     @Test void 关键消费者DTOSchema约束机器可读且无名称碰撞() throws Exception {
-        JsonNode schemas = openApi().at("/components/schemas");
+        JsonNode root = openApi();
+        JsonNode schemas = root.at("/components/schemas");
         assertThat(schemas.has("SendCodeRequest")).isTrue();
         assertThat(schemas.at("/RegisterRequest/properties/password/minLength").asInt()).isEqualTo(8);
         assertThat(schemas.at("/RegisterRequest/properties/password/maxLength").asInt()).isEqualTo(64);
@@ -102,6 +103,17 @@ class OpenApiContractTest {
         assertThat(schemas.at("/PhotoParametersInput/properties/cameraBody/maxLength").asInt()).isEqualTo(100);
         assertThat(schemas.at("/PhotoParametersInput/properties/lens/maxLength").asInt()).isEqualTo(100);
         assertThat(schemas.at("/PhotoParametersInput/properties/focalLength/maxLength").asInt()).isEqualTo(50);
+        assertThat(schemas.at("/FieldError/properties/path/description").asText())
+                .contains("mediaParameters[2].parameters.captureTime");
+        assertThat(schemas.at("/ItemError/properties/resourceId/description").asText())
+                .contains("公开 mediaId");
+        assertThat(schemas.at("/ItemError/properties/code/example").asText())
+                .isEqualTo("INVALID_MEDIA_PARAMETERS");
+        String draft400 = root.at("/paths/~1api~1v1~1photos~1{workId}~1draft/put/responses/400/content/application~1json/schema/$ref").asText();
+        assertThat(root.at(draft400.substring(1) + "/properties/fieldErrors/items/$ref").asText())
+                .endsWith("/FieldError");
+        assertThat(root.at(draft400.substring(1) + "/properties/itemErrors/items/$ref").asText())
+                .endsWith("/ItemError");
         assertThat(schemas.at("/Comment/properties/content/maxLength").asInt()).isEqualTo(1000);
         assertThat(schemas.at("/CategoryView/properties/categoryId/type").asText()).isEqualTo("string");
 

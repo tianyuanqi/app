@@ -50,6 +50,9 @@
 - `PhotoParameters.captureTime` 请求为 ISO-8601 Offset Date-Time；服务端统一换算并按
   `Asia/Shanghai` 比较，晚于当前时间返回 `400 VALIDATION_FAILED`。所有非空响应固定携带
   `+08:00`。
+- `mediaParameters[]` 的逐项校验失败继续使用统一 `ErrorResult`：`fieldErrors.path` 固定为
+  `mediaParameters[index].parameters.field`（零基下标），`itemErrors.resourceId` 为请求中已有的
+  公开 `mediaId`，`itemErrors.code=INVALID_MEDIA_PARAMETERS`。客户端不得依赖消息文本定位。
 - `cameraBody`、`lens` 各最多 100 个用户可见字符；其余展示参数各最多 50 个；全部为
   NFC 单行纯文本，禁止控制字符和双向文本控制符。空白值归一化为 `null`。
 - 作者 Revision、审核 Target 与公开详情均返回有序 `RevisionMediaView[]`，每张媒体包含

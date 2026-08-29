@@ -22,11 +22,25 @@ import org.springframework.web.multipart.support.MissingServletRequestPartExcept
 import org.springframework.web.servlet.resource.NoResourceFoundException;
 
 import java.util.List;
+import java.util.Comparator;
+import java.util.LinkedHashMap;
+import java.util.Map;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+import com.yuanqi.app.photo.dto.WorkRequests;
 
 /** 将所有 JSON 失败统一为 ErrorResult。 */
 @RestControllerAdvice
 public class GlobalExceptionHandler {
     private static final Logger log = LoggerFactory.getLogger(GlobalExceptionHandler.class);
+    private static final Pattern MEDIA_PARAMETER_PATH = Pattern.compile("^mediaParameters\\[(\\d+)](?:\\.parameters)?(?:\\..+)?$");
+
+    @ExceptionHandler(RequestValidationException.class)
+    public ResponseEntity<ErrorResult> handleStructuredValidation(RequestValidationException e) {
+        ErrorResult body = new ErrorResult(ErrorCode.VALIDATION_FAILED, e.getMessage(), false, null,
+                e.getFieldErrors(), e.getItemErrors(), null, null, TraceContext.current());
+        return ResponseEntity.badRequest().body(body);
+    }
 
     @ExceptionHandler(BusinessException.class)
     public ResponseEntity<ErrorResult> handleBusiness(BusinessException e) {
@@ -53,12 +67,30 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(MethodArgumentNotValidException.class)
     public ResponseEntity<ErrorResult> handleValidation(MethodArgumentNotValidException e) {
         List<ErrorResult.FieldError> fields = e.getBindingResult().getFieldErrors().stream()
+                .sorted(Comparator.comparing(org.springframework.validation.FieldError::getField)
+                        .thenComparing(field -> String.valueOf(field.getCode())))
                 .map(field -> new ErrorResult.FieldError(field.getField(), "INVALID", field.getDefaultMessage()))
                 .toList();
+        List<ErrorResult.ItemError> items = itemErrors(fields, e.getBindingResult().getTarget());
         ErrorResult body = new ErrorResult(ErrorCode.VALIDATION_FAILED,
-                ErrorCode.VALIDATION_FAILED.getMessage(), false, null, fields, List.of(), null, null,
+                ErrorCode.VALIDATION_FAILED.getMessage(), false, null, fields, items, null, null,
                 TraceContext.current());
         return ResponseEntity.badRequest().body(body);
+    }
+
+    private List<ErrorResult.ItemError> itemErrors(List<ErrorResult.FieldError> fields, Object target) {
+        if (!(target instanceof WorkRequests.Draft draft) || draft.mediaParameters() == null) return List.of();
+        Map<Integer, ErrorResult.ItemError> errors = new LinkedHashMap<>();
+        for (ErrorResult.FieldError field : fields) {
+            Matcher matcher = MEDIA_PARAMETER_PATH.matcher(field.path());
+            if (!matcher.matches()) continue;
+            int index = Integer.parseInt(matcher.group(1));
+            String mediaId = index < draft.mediaParameters().size() && draft.mediaParameters().get(index) != null
+                    ? draft.mediaParameters().get(index).mediaId() : null;
+            errors.putIfAbsent(index, new ErrorResult.ItemError(null, mediaId, "INVALID_MEDIA_PARAMETERS",
+                    "该媒体包含无效拍摄参数", false));
+        }
+        return List.copyOf(errors.values());
     }
 
     @ExceptionHandler({BindException.class, ConstraintViolationException.class,
