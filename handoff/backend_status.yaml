@@ -1,7 +1,7 @@
 status: development_incomplete
 as_of: "2026-08-29"
 phase: v1_backend_development
-work_package: V1-BE-005
+work_package: V1-BE-006
 workflow_revision: WF-2026-08-28-02
 release: 2400px-v1.0
 requirements_baseline: v1.0-REQ-R4
@@ -10,8 +10,8 @@ human_gate_3: Passed
 repository:
   path: /Users/yuanqi/2400px/app
   branch: codex/v1-backend
-  source_commit: 96015a591befe4b99f7df6d945a636344a0fed73
-  current_commit_before_handoff_update: 3ab2a34
+  source_commit: ded449af402da942747d021097f69fa21ed9f34b
+  current_commit_before_handoff_update: d8ad64e
   remote_modified: false
   pushed: false
   pull_request_created: false
@@ -31,10 +31,10 @@ environment:
   spring_boot: 3.5.16
   runtime_profile: local
   isolated_development_schema: px2400_v1_dev
-  isolated_targeted_schema: px2400_v1_be005_targeted_20260829
-  isolated_test_schema: px2400_v1_be005_verify_20260829
-  isolated_runtime_schema: px2400_v1_be005_runtime_20260829
-  flyway_schema_version: 14
+  isolated_targeted_schema: px2400_v1_be006_targeted_final_20260829
+  isolated_test_schema: px2400_v1_be006_verify_20260829
+  isolated_runtime_schema: px2400_v1_be006_runtime_20260829
+  flyway_schema_version: 15
 
 implementation_slices:
   - commit: 0df928f
@@ -61,12 +61,14 @@ implementation_slices:
     scope: 有效 PNG 确定性处理、Web JPEG 衍生图，以及作者 Revision/审核 Target 完整媒体消费者 DTO
   - commit: 3ab2a34
     scope: 分类公开 ID 显式映射与待审目标 Web 媒体的管理员受限读取
+  - commit: d8ad64e
+    scope: 逐图 EXIF 候选、手工参数覆盖与清空、未来时间规则及 Asia/Shanghai 序列化
 
 runtime_contract:
-  authority: http://127.0.0.1:18085/v3/api-docs
-  evidence_file: /private/tmp/2400px-v1-be005-runtime-openapi.json
-  sha256: 36c01c8470d76ad1a244ae2196c10890066ab838217c8340475bd95b84629a70
-  bytes: 330468
+  authority: http://127.0.0.1:18086/v3/api-docs
+  evidence_file: /private/tmp/2400px-v1-be006-runtime-openapi.json
+  sha256: 7461088e0e9831d443bb3f599d2909d187ce2895d8feddbf62caacc720036348
+  bytes: 331847
   paths: 40
   operations: 51
   api_prefix: /api/v1
@@ -78,7 +80,7 @@ verification:
   clean_verify:
     command: ./mvnw clean verify
     result: passed
-    tests_run: 32
+    tests_run: 38
     failures: 0
     errors: 0
     skipped: 0
@@ -92,16 +94,17 @@ verification:
     - { suite: OpenApiContractTest, count: 3, result: passed }
     - { suite: AdminContractSecurityTest, count: 2, result: passed }
     - { suite: BackendP0IntegrationMatrixTest, count: 10, result: passed }
-    - { suite: MediaProcessorIntegrationTest, count: 3, result: passed }
+    - { suite: ExifTimeRulesIntegrationTest, count: 3, result: passed }
+    - { suite: MediaProcessorIntegrationTest, count: 6, result: passed }
   fresh_database:
     result: passed
-    schema: px2400_v1_be005_verify_20260829
-    migrations: V1-V14
-    note: 该 Schema 从空状态一次性成功应用 V1～V14；没有复用失败后修改的 Schema。
+    schema: px2400_v1_be006_verify_20260829
+    migrations: V1-V15
+    note: 该 Schema 从空状态一次性成功应用 V1～V15；早期定向测试的独立 Schema 因测试断言错误被弃用，没有在失败 Schema 上修改或复用数据库结构。
   runtime_startup:
     result: passed
-    schema: px2400_v1_be005_runtime_20260829
-    migrations_validated: 14
+    schema: px2400_v1_be006_runtime_20260829
+    migrations_validated: 15
   health_check:
     result: passed
     status: UP
@@ -129,6 +132,8 @@ integration_matrix:
   - { invariant: 待审目标 Web 媒体仅作者和管理员可读，普通他人、匿名与无关私有媒体保持防枚举, test: BackendP0IntegrationMatrixTest.待审目标Web媒体权限矩阵保持最小授权 }
   - { invariant: 有效 1200×1200 PNG 从 PROCESSING 到 READY 并生成 JPEG 衍生图, test: MediaProcessorIntegrationTest.有效1200方形PNG从PROCESSING进入READY并生成JPEG衍生图 }
   - { invariant: 损坏媒体确定失败且暂存清理，临时处理失败可重试并保持 ClientUploadId 单一 Asset, test: MediaProcessorIntegrationTest }
+  - { invariant: 完整、缺失、损坏和未来 EXIF 均按单张媒体独立处理且不阻断合法图像进入 READY, test: MediaProcessorIntegrationTest }
+  - { invariant: "逐图候选、手工覆盖与清空无跨媒体污染，未来手工拒绝且有效时间固定序列化为 +08:00", test: ExifTimeRulesIntegrationTest }
   - { invariant: 未认证及普通用户先于资源和 ETag 校验失败, test: AdminContractSecurityTest }
 
 implemented_capabilities:
@@ -147,6 +152,9 @@ implemented_capabilities:
     - 作者 Revision 与审核 Target 返回 category、tags、有序 media、Web 引用和非空 parameters
     - 分类接口返回 11 个唯一非空公开 categoryId，草稿二次保存保持分类无损
     - 待审 Target 的 BEARER_FETCH Web 媒体仅向作者和具备审核权限的管理员开放
+    - 每张媒体独立提取拍摄时间、机身、镜头、焦距、光圈、快门和 ISO 候选；缺失或解析失败不阻断处理
+    - 作者可逐图覆盖或清空参数；未来 EXIF 只警告不写入有效拍摄时间，未来手工时间稳定拒绝
+    - 有效拍摄时间按 Asia/Shanghai 比较并固定序列化为带 +08:00 偏移的 ISO-8601
   moderation:
     - 待审队列、目标详情、历史、批准、驳回、下架及恢复
     - 允许管理员自审并记录 selfReview
@@ -164,7 +172,17 @@ integration_readiness:
   backend_overall_ready: false
   frontend_can_integrate: true
   tester_can_accept: true
-  reason: FE-V1-CONTRACT-004 与 FE-V1-RUNTIME-003 已达到可供 Frontend 验证，且既有 P0 保持关闭；最终 CLOSED 需 Coordinator 回收 Frontend Regression，整体开发仍因明确保留的其他 P1/P2 未完成而不是 release-ready。
+  reason: V1-BE-GAP-004 已达到可供 Frontend 验证，且既有 P0 与 V1-BE-005 消费者修复保持回归通过；最终 CLOSED 需 Coordinator 回收 Frontend Regression，整体开发仍因明确保留的其他 P1/P2 未完成而不是 release-ready。
+
+backend_findings:
+  V1-BE-GAP-004:
+    status: ready_for_frontend_verification
+    evidence:
+      - 三张不同 EXIF 的真实 HTTP 上传均进入 READY；未来 EXIF 只返回 EXIF_CAPTURE_TIME_IN_FUTURE，不阻断保存或提交
+      - 单图手工覆盖和清空不改变其他媒体；未来手工时间返回 400/VALIDATION_FAILED
+      - 作者 Revision、审核 Target 和公开详情均按媒体返回独立参数，非空拍摄时间固定为 +08:00
+      - 全新空库 V1～V15、38 个 clean verify 测试、健康检查和 40 Path/51 Operation 运行时 OpenAPI 均通过
+    required_next_action: Coordinator 派发 Frontend Regression 并回收证据后决定是否 CLOSED
 
 frontend_runtime_findings:
   FE-V1-CONTRACT-004:
@@ -233,7 +251,7 @@ blocking_gaps:
   - id: V1-BE-GAP-004
     priority: P1
     area: exif
-    summary: 尚未实现 EXIF 提取、逐图拍摄时间覆盖、未来 EXIF 警告及 Asia/Shanghai 序列化闭环。
+    summary: 已实现并通过自动化、空库与真实 HTTP，当前仅标记为可供 Frontend 验证；最终 CLOSED 等待 Coordinator 回收 Frontend Regression。
   - id: V1-BE-GAP-005
     priority: P1
     area: mail
@@ -264,6 +282,6 @@ database_safety:
 
 handoff_conclusion:
   result: pass_with_findings
-  summary: FE-V1-CONTRACT-004 与 FE-V1-RUNTIME-003 已达到可供 Frontend 验证；Commit 3ab2a34 在全新空库 V1～V14 上通过 32 个测试，并具备健康检查、真实 HTTP 分类 round-trip、审核媒体权限矩阵与运行时 OpenAPI 证据。Backend 整体仍因本任务禁止处理的其他 P1/P2 保持 development_incomplete。
-  required_next_action: Coordinator 应派发 Frontend Regression 并回收证据后决定两项 Finding 是否最终 CLOSED；其他 V1-BE-GAP-004～009 仅按后续顺序工作包处理，本任务未扩大其状态或范围。
-  detailed_evidence: /Users/yuanqi/2400px/app/handoff/evidence/v1-be-005-category-moderation-media-closure.md
+  summary: V1-BE-GAP-004 已达到可供 Frontend 验证；Commit d8ad64e 在全新空库 V1～V15 上通过 38 个 clean verify 测试，并具备逐图 EXIF、覆盖/清空、未来时间、Asia/Shanghai、健康、真实 HTTP 与 40 Path/51 Operation 运行时 OpenAPI 证据。Backend 整体仍因本任务禁止处理的 V1-BE-GAP-005～009 保持 development_incomplete。
+  required_next_action: Coordinator 应派发 Frontend Regression 并回收证据后决定 V1-BE-GAP-004 是否最终 CLOSED；V1-BE-GAP-005～009 状态不变，本任务未扩大其范围。
+  detailed_evidence: /Users/yuanqi/2400px/app/handoff/evidence/v1-be-006-exif-time-closure.md
