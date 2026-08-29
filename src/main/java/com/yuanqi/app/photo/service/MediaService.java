@@ -10,6 +10,7 @@ import com.yuanqi.app.common.http.StrongEtag;
 import com.yuanqi.app.photo.entity.MediaAsset;
 import com.yuanqi.app.photo.mapper.MediaAssetMapper;
 import com.yuanqi.app.photo.vo.MediaViews;
+import com.yuanqi.app.photo.vo.WorkViews;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
@@ -18,6 +19,8 @@ import java.io.IOException;
 import java.time.Clock;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
+import java.time.ZoneId;
+import java.util.List;
 
 @Service
 public class MediaService {
@@ -117,9 +120,22 @@ public class MediaService {
                 "/api/v1/media/" + a.getMediaId() + "/web", "image/jpeg", a.getWidth(), a.getHeight(), tag(a)) : null;
         MediaViews.Failure failure = a.getFailureCode() == null ? null
                 : new MediaViews.Failure(a.getFailureCode(), "媒体处理未成功");
+        WorkViews.PhotoParameters exifCandidate = exifCandidate(a);
+        List<MediaViews.Warning> warnings = ExifExtractor.decodeWarnings(a.getExifWarningCodes()).stream()
+                .map(w -> new MediaViews.Warning(w.code(), w.field(), w.message())).toList();
         return new MediaViews.Processing(a.getMediaId(), a.getClientUploadId(), a.getStatus(), a.getByteSize(),
-                a.getWidth(), a.getHeight(), web, null, java.util.List.of(), failure,
+                a.getWidth(), a.getHeight(), web, exifCandidate, warnings, failure,
                 Boolean.TRUE.equals(a.getRetryable()), a.getRetryUntil() == null ? null : a.getRetryUntil().atOffset(ZoneOffset.UTC), tag(a));
+    }
+
+    private WorkViews.PhotoParameters exifCandidate(MediaAsset a) {
+        if (a.getExifCaptureTime() == null && a.getExifCameraBody() == null && a.getExifLens() == null
+                && a.getExifFocalLength() == null && a.getExifAperture() == null
+                && a.getExifShutterSpeed() == null && a.getExifIsoValue() == null) return null;
+        return new WorkViews.PhotoParameters(a.getExifCaptureTime() == null ? null
+                : a.getExifCaptureTime().atZone(ZoneId.of("Asia/Shanghai")).toOffsetDateTime(),
+                a.getExifCameraBody(), a.getExifLens(), a.getExifFocalLength(), a.getExifAperture(),
+                a.getExifShutterSpeed(), a.getExifIsoValue());
     }
 
     public String tag(MediaAsset asset) { return "\"media-" + asset.getRowVersion() + "\""; }

@@ -36,6 +36,25 @@
 - 管理员例外仅适用于 `GET /api/v1/media/{mediaId}/web` 的 Web 衍生图，不新增原图、暂存
   文件或本机路径访问能力。
 
+## V1-BE-006 逐图 EXIF 与拍摄时间增量（2026-08-29）
+
+- `MediaProcessingView.exifCandidate` 使用 `PhotoParameters`，`warnings[]` 使用
+  `MediaWarning{code, field, message}`。稳定警告码为 `EXIF_PARSE_FAILED`、
+  `EXIF_CAPTURE_TIME_IN_FUTURE`、`EXIF_FIELD_IGNORED`；警告不使媒体处理失败。
+- 自动提取的候选参数按 `mediaId` 隔离。未来 EXIF 拍摄时间不写入候选
+  `captureTime`，但其他合法 EXIF 字段仍可返回，媒体仍可进入 `READY`。
+- `WorkDraftRequest` 保留 `mediaIds[]`，并新增可选 `mediaParameters[]`。每项为
+  `{mediaId, parameters}`；只允许引用当前 `mediaIds`，同一媒体最多一项。提供该项表示
+  完整替换该媒体参数，各字段 `null` 表示清空；未提供的既有媒体保持原参数，新媒体默认
+  采用合法 EXIF 候选。
+- `PhotoParameters.captureTime` 请求为 ISO-8601 Offset Date-Time；服务端统一换算并按
+  `Asia/Shanghai` 比较，晚于当前时间返回 `400 VALIDATION_FAILED`。所有非空响应固定携带
+  `+08:00`。
+- `cameraBody`、`lens` 各最多 100 个用户可见字符；其余展示参数各最多 50 个；全部为
+  NFC 单行纯文本，禁止控制字符和双向文本控制符。空白值归一化为 `null`。
+- 作者 Revision、审核 Target 与公开详情均返回有序 `RevisionMediaView[]`，每张媒体包含
+  自己的 `PhotoParameters`，不会跨媒体复用。
+
 ## 1. 通用约定
 
 - 本地 Base URL：`http://localhost:8080`

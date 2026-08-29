@@ -110,6 +110,52 @@ class MediaProcessorIntegrationTest {
         assertThat(retrying.versionTag()).isNotEqualTo(failed.versionTag());
     }
 
+    @Test void 完整EXIF逐字段提取且拍摄时间固定输出上海偏移() throws Exception {
+        long owner = account("uid_exif_complete");
+        MediaViews.Processing accepted = media.upload(owner, UUID.randomUUID().toString(),
+                new MockMultipartFile("file", "exif.jpg", "image/jpeg",
+                        ExifFixtureFactory.jpeg("2020:01:02 03:04:05", "Fixture Camera A", "Fixture Lens A", 320)));
+        processor.process(accepted.mediaId());
+        MediaViews.Processing ready = media.get(owner, accepted.mediaId());
+        assertThat(ready.status()).isEqualTo("READY");
+        assertThat(ready.exifCandidate()).isNotNull();
+        assertThat(ready.exifCandidate().captureTime().toString()).isEqualTo("2020-01-02T03:04:05+08:00");
+        assertThat(ready.exifCandidate().cameraBody()).isEqualTo("Fixture Camera A");
+        assertThat(ready.exifCandidate().lens()).isEqualTo("Fixture Lens A");
+        assertThat(ready.exifCandidate().focalLength()).contains("35");
+        assertThat(ready.exifCandidate().aperture()).contains("1.8");
+        assertThat(ready.exifCandidate().shutterSpeed()).contains("1/125");
+        assertThat(ready.exifCandidate().iso()).contains("320");
+        assertThat(ready.warnings()).isEmpty();
+    }
+
+    @Test void 未来EXIF不进入有效候选但不阻断媒体处理() throws Exception {
+        long owner = account("uid_exif_future");
+        MediaViews.Processing accepted = media.upload(owner, UUID.randomUUID().toString(),
+                new MockMultipartFile("file", "future.jpg", "image/jpeg",
+                        ExifFixtureFactory.jpeg("2099:01:02 03:04:05", "Fixture Camera Future", "Fixture Lens Future", 640)));
+        processor.process(accepted.mediaId());
+        MediaViews.Processing ready = media.get(owner, accepted.mediaId());
+        assertThat(ready.status()).isEqualTo("READY");
+        assertThat(ready.exifCandidate()).isNotNull();
+        assertThat(ready.exifCandidate().captureTime()).isNull();
+        assertThat(ready.exifCandidate().cameraBody()).isEqualTo("Fixture Camera Future");
+        assertThat(ready.warnings()).extracting(MediaViews.Warning::code)
+                .contains("EXIF_CAPTURE_TIME_IN_FUTURE");
+    }
+
+    @Test void EXIF解析失败不阻断有效图片处理() throws Exception {
+        long owner = account("uid_exif_broken");
+        MediaViews.Processing accepted = media.upload(owner, UUID.randomUUID().toString(),
+                new MockMultipartFile("file", "broken-exif.jpg", "image/jpeg",
+                        ExifFixtureFactory.jpegWithBrokenExif()));
+        processor.process(accepted.mediaId());
+        MediaViews.Processing ready = media.get(owner, accepted.mediaId());
+        assertThat(ready.status()).isEqualTo("READY");
+        assertThat(ready.exifCandidate()).isNull();
+        assertThat(ready.warnings()).extracting(MediaViews.Warning::code).contains("EXIF_PARSE_FAILED");
+    }
+
     private long account(String uid) {
         String email = uid + "@example.invalid";
         jdbc.update("INSERT INTO user_account(uid,email,email_key,password_hash,role,governance_status,row_version,created_at,updated_at) " +

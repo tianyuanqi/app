@@ -31,8 +31,10 @@ import java.time.LocalDateTime;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.time.ZoneId;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 @Service
@@ -76,7 +78,7 @@ public class WorkService {
         PhotoRevision revision = newRevision(work, "NEW", 1, request, now);
         work.setWorkingRevisionId(revision.getId());
         workMapper.updateById(work);
-        bindMedia(accountId, revision.getId(), request.mediaIds());
+        bindMedia(accountId, revision.getId(), request);
         bindTags(revision.getId(), request.tags());
         return view(work, null, revision);
     }
@@ -100,7 +102,7 @@ public class WorkService {
         revision.setUpdatedAt(now());
         revision.setRowVersion(revision.getRowVersion() + 1);
         revisionMapper.updateById(revision);
-        bindMedia(accountId, revision.getId(), request.mediaIds());
+        bindMedia(accountId, revision.getId(), request);
         bindTags(revision.getId(), request.tags());
         bump(work);
         return view(work, revision(work.getPublicRevisionId()), revision);
@@ -195,10 +197,14 @@ public class WorkService {
         }
     }
 
-    private void bindMedia(Long accountId, Long revisionId, List<String> ids) {
+    private void bindMedia(Long accountId, Long revisionId, WorkRequests.Draft request) {
+        List<String> ids = request.mediaIds();
         if (ids == null || ids.isEmpty() || ids.size() > 9 || new HashSet<>(ids).size() != ids.size()) {
             throw new BusinessException(ErrorCode.VALIDATION_FAILED, "作品必须包含 1～9 张不重复照片");
         }
+        Map<String, WorkRequests.PhotoParameters> overrides = parameterOverrides(ids, request.mediaParameters());
+        Map<Long, RevisionMedia> previous = new HashMap<>();
+        revisionMediaMapper.listByRevision(revisionId).forEach(item -> previous.put(item.getMediaId(), item));
         revisionMediaMapper.deleteByRevision(revisionId);
         long total = 0;
         int position = 1;
@@ -211,9 +217,83 @@ public class WorkService {
             total += media.getByteSize() == null ? 0 : media.getByteSize();
             RevisionMedia relation = new RevisionMedia();
             relation.setRevisionId(revisionId); relation.setMediaId(media.getId()); relation.setPosition(position++);
-            relation.setParameterSource("NONE"); revisionMediaMapper.insert(relation);
+            WorkRequests.PhotoParameters manual = overrides.get(publicId);
+            if (manual != null) applyManual(relation, manual);
+            else if (previous.containsKey(media.getId())) copyParameters(previous.get(media.getId()), relation);
+            else applyExif(media, relation);
+            revisionMediaMapper.insert(relation);
         }
         if (total > 200L * 1024 * 1024) throw new BusinessException(ErrorCode.FILE_TOO_LARGE);
+    }
+
+    private Map<String, WorkRequests.PhotoParameters> parameterOverrides(List<String> mediaIds,
+            List<WorkRequests.MediaParameters> values) {
+        if (values == null || values.isEmpty()) return Map.of();
+        if (values.size() > 9) throw new BusinessException(ErrorCode.VALIDATION_FAILED);
+        Set<String> allowed = new HashSet<>(mediaIds);
+        Map<String, WorkRequests.PhotoParameters> result = new HashMap<>();
+        for (WorkRequests.MediaParameters value : values) {
+            if (value == null || value.mediaId() == null || value.parameters() == null
+                    || !allowed.contains(value.mediaId()) || result.put(value.mediaId(), value.parameters()) != null) {
+                throw new BusinessException(ErrorCode.VALIDATION_FAILED, "逐图参数必须唯一对应当前草稿媒体");
+            }
+        }
+        return result;
+    }
+
+    private void applyManual(RevisionMedia target, WorkRequests.PhotoParameters input) {
+        if (input.captureTime() != null) {
+            LocalDateTime shanghai = input.captureTime().atZoneSameInstant(ExifExtractor.SHANGHAI).toLocalDateTime();
+            LocalDateTime current = LocalDateTime.ofInstant(clock.instant(), ExifExtractor.SHANGHAI);
+            if (shanghai.isAfter(current)) {
+                throw new BusinessException(ErrorCode.VALIDATION_FAILED, "拍摄时间不能晚于当前 Asia/Shanghai 时间");
+            }
+            target.setCaptureTime(shanghai);
+        }
+        target.setCameraBody(parameterText(input.cameraBody(), 100));
+        target.setLens(parameterText(input.lens(), 100));
+        target.setFocalLength(parameterText(input.focalLength(), 50));
+        target.setAperture(parameterText(input.aperture(), 50));
+        target.setShutterSpeed(parameterText(input.shutterSpeed(), 50));
+        target.setIsoValue(parameterText(input.iso(), 50));
+        target.setParameterSource("MANUAL");
+    }
+
+    private void applyExif(MediaAsset media, RevisionMedia target) {
+        target.setCaptureTime(media.getExifCaptureTime());
+        target.setCameraBody(media.getExifCameraBody());
+        target.setLens(media.getExifLens());
+        target.setFocalLength(media.getExifFocalLength());
+        target.setAperture(media.getExifAperture());
+        target.setShutterSpeed(media.getExifShutterSpeed());
+        target.setIsoValue(media.getExifIsoValue());
+        target.setWarningCodes(media.getExifWarningCodes());
+        target.setParameterSource(hasParameters(target) ? "EXIF" : "NONE");
+    }
+
+    private void copyParameters(RevisionMedia source, RevisionMedia target) {
+        target.setCaptureTime(source.getCaptureTime()); target.setCameraBody(source.getCameraBody());
+        target.setLens(source.getLens()); target.setFocalLength(source.getFocalLength());
+        target.setAperture(source.getAperture()); target.setShutterSpeed(source.getShutterSpeed());
+        target.setIsoValue(source.getIsoValue()); target.setParameterSource(source.getParameterSource());
+        target.setWarningCodes(source.getWarningCodes());
+    }
+
+    private boolean hasParameters(RevisionMedia value) {
+        return value.getCaptureTime() != null || value.getCameraBody() != null || value.getLens() != null
+                || value.getFocalLength() != null || value.getAperture() != null
+                || value.getShutterSpeed() != null || value.getIsoValue() != null;
+    }
+
+    private String parameterText(String raw, int max) {
+        if (raw == null) return null;
+        String value = UnicodeText.nfc(UnicodeText.trimUnicode(raw));
+        if (value == null || value.isEmpty()) return null;
+        if (UnicodeText.graphemeCount(value) > max || UnicodeText.containsForbiddenControl(value, false)
+                || value.contains("\n") || value.contains("\r")) {
+            throw new BusinessException(ErrorCode.VALIDATION_FAILED, "拍摄参数必须为范围内的单行纯文本");
+        }
+        return value;
     }
 
     private void validateReadyMedia(Long accountId, List<RevisionMedia> relations) {
@@ -301,7 +381,11 @@ public class WorkService {
     }
 
     private List<WorkViews.RevisionMedia> media(PhotoRevision revision) {
-        return revisionMediaMapper.listByRevision(revision.getId()).stream().map(relation -> {
+        return mediaByRevision(revision.getId());
+    }
+
+    public List<WorkViews.RevisionMedia> mediaByRevision(Long revisionId) {
+        return revisionMediaMapper.listByRevision(revisionId).stream().map(relation -> {
             MediaAsset asset = mediaMapper.selectById(relation.getMediaId());
             if (asset == null || !"READY".equals(asset.getStatus()) || asset.getWebStorageKey() == null)
                 throw new BusinessException(ErrorCode.STATE_CONFLICT, "Revision 媒体未完成处理");

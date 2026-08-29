@@ -32,11 +32,12 @@ public class MediaProcessor {
     private final MediaAssetMapper mapper;
     private final MediaStorage storage;
     private final Clock clock;
+    private final ExifExtractor exifExtractor;
     private final TransactionTemplate transactions;
 
-    public MediaProcessor(MediaAssetMapper mapper, MediaStorage storage, Clock clock,
+    public MediaProcessor(MediaAssetMapper mapper, MediaStorage storage, Clock clock, ExifExtractor exifExtractor,
                           PlatformTransactionManager transactionManager) {
-        this.mapper = mapper; this.storage = storage; this.clock = clock;
+        this.mapper = mapper; this.storage = storage; this.clock = clock; this.exifExtractor = exifExtractor;
         this.transactions = new TransactionTemplate(transactionManager);
     }
 
@@ -57,6 +58,9 @@ public class MediaProcessor {
         String staging = asset.getOriginalStorageKey();
         try {
             Decoded decoded = decode(staging);
+            ExifExtractor.Result exif = "PHOTO".equals(asset.getPurpose())
+                    ? exifExtractor.extract(storage.safe(staging), clock)
+                    : new ExifExtractor.Result(null, List.of());
             String originalKey = storage.originalKey(asset.getMediaId(), decoded.extension());
             storage.move(staging, originalKey);
             asset.setOriginalStorageKey(originalKey);
@@ -67,6 +71,7 @@ public class MediaProcessor {
             asset.setWidth(decoded.image().getWidth()); asset.setHeight(decoded.image().getHeight());
             asset.setFrameCount(decoded.frames()); asset.setStatus("READY"); asset.setFailureCode(null);
             asset.setRetryable(false); asset.setRetryUntil(null);
+            applyExif(asset, exif);
         } catch (MediaValidationException e) {
             asset.setStatus("FAILED"); asset.setFailureCode(e.code); asset.setRetryable(false);
             try { storage.delete(staging); } catch (IOException ignored) { }
@@ -134,6 +139,18 @@ public class MediaProcessor {
             while ((read = in.read(buffer)) >= 0) digest.update(buffer, 0, read);
         }
         return HexFormat.of().formatHex(digest.digest());
+    }
+
+    private void applyExif(MediaAsset asset, ExifExtractor.Result result) {
+        ExifExtractor.Candidate candidate = result.candidate();
+        asset.setExifCaptureTime(candidate == null ? null : candidate.captureTime());
+        asset.setExifCameraBody(candidate == null ? null : candidate.cameraBody());
+        asset.setExifLens(candidate == null ? null : candidate.lens());
+        asset.setExifFocalLength(candidate == null ? null : candidate.focalLength());
+        asset.setExifAperture(candidate == null ? null : candidate.aperture());
+        asset.setExifShutterSpeed(candidate == null ? null : candidate.shutterSpeed());
+        asset.setExifIsoValue(candidate == null ? null : candidate.iso());
+        asset.setExifWarningCodes(ExifExtractor.encodeWarnings(result.warnings()));
     }
 
     private LocalDateTime now() { return LocalDateTime.ofInstant(clock.instant(), ZoneOffset.UTC); }

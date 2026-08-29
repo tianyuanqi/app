@@ -27,8 +27,15 @@ public final class WorkViews {
     }
 
     @Schema(name = "PhotoParameters")
-    public record PhotoParameters(OffsetDateTime captureTime, String cameraBody, String lens,
-                                  String focalLength, String aperture, String shutterSpeed, String iso) {
+    public record PhotoParameters(
+            @Schema(type = "string", format = "date-time", example = "2026-08-28T10:30:00+08:00")
+            OffsetDateTime captureTime,
+            @Schema(maxLength = 100) String cameraBody,
+            @Schema(maxLength = 100) String lens,
+            @Schema(maxLength = 50) String focalLength,
+            @Schema(maxLength = 50) String aperture,
+            @Schema(maxLength = 50) String shutterSpeed,
+            @Schema(maxLength = 50) String iso) {
     }
 
     @Schema(name = "RevisionMediaView")

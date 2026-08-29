@@ -15,10 +15,19 @@ public final class MediaViews {
     @Schema(name = "MediaFailure")
     public record Failure(String code, String message) {}
 
+    @Schema(name = "MediaWarning")
+    public record Warning(
+            @Schema(allowableValues = {"EXIF_PARSE_FAILED", "EXIF_CAPTURE_TIME_IN_FUTURE", "EXIF_FIELD_IGNORED"})
+            String code,
+            @Schema(allowableValues = {"captureTime", "cameraBody", "lens", "focalLength", "aperture",
+                    "shutterSpeed", "iso"})
+            String field,
+            String message) {}
+
     @Schema(name = "MediaProcessingView")
     public record Processing(String mediaId, String clientUploadId, String status, Long byteSize,
-                             Integer width, Integer height, WebMedia web, Object exifCandidate,
-                             List<String> warnings, Failure failure, boolean retryable,
+                             Integer width, Integer height, WebMedia web, WorkViews.PhotoParameters exifCandidate,
+                             List<Warning> warnings, Failure failure, boolean retryable,
                              OffsetDateTime retryUntil, String versionTag) {}
 
     @Schema(name = "MediaDeleteResult")

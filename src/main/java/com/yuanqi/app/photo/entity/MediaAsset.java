@@ -23,6 +23,14 @@ public class MediaAsset {
     private Integer width;
     private Integer height;
     private Integer frameCount;
+    private LocalDateTime exifCaptureTime;
+    private String exifCameraBody;
+    private String exifLens;
+    private String exifFocalLength;
+    private String exifAperture;
+    private String exifShutterSpeed;
+    private String exifIsoValue;
+    private String exifWarningCodes;
     private String status;
     private String failureCode;
     private Boolean retryable;

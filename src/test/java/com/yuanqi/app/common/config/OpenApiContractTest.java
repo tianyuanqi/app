@@ -95,6 +95,13 @@ class OpenApiContractTest {
         assertThat(schemas.at("/WorkDraftRequest/properties/tags/items/maxLength").asInt()).isEqualTo(20);
         assertThat(schemas.at("/WorkDraftRequest/properties/mediaIds/minItems").asInt()).isEqualTo(1);
         assertThat(schemas.at("/WorkDraftRequest/properties/mediaIds/maxItems").asInt()).isEqualTo(9);
+        assertThat(schemas.at("/WorkDraftRequest/properties/mediaParameters/maxItems").asInt()).isEqualTo(9);
+        assertThat(schemas.at("/WorkDraftRequest/properties/mediaParameters/items/$ref").asText())
+                .endsWith("/RevisionMediaParametersInput");
+        assertThat(schemas.at("/PhotoParametersInput/properties/captureTime/format").asText()).isEqualTo("date-time");
+        assertThat(schemas.at("/PhotoParametersInput/properties/cameraBody/maxLength").asInt()).isEqualTo(100);
+        assertThat(schemas.at("/PhotoParametersInput/properties/lens/maxLength").asInt()).isEqualTo(100);
+        assertThat(schemas.at("/PhotoParametersInput/properties/focalLength/maxLength").asInt()).isEqualTo(50);
         assertThat(schemas.at("/Comment/properties/content/maxLength").asInt()).isEqualTo(1000);
         assertThat(schemas.at("/CategoryView/properties/categoryId/type").asText()).isEqualTo("string");
 
@@ -106,6 +113,17 @@ class OpenApiContractTest {
         assertThat(schemas.at("/RevisionMediaView/properties/web/$ref").asText()).endsWith("/WebMediaRef");
         assertThat(schemas.at("/RevisionMediaView/properties/parameters/$ref").asText())
                 .endsWith("/PhotoParameters");
+        assertThat(schemas.at("/MediaProcessingView/properties/exifCandidate/$ref").asText())
+                .endsWith("/PhotoParameters");
+        assertThat(schemas.at("/MediaProcessingView/properties/warnings/items/$ref").asText())
+                .endsWith("/MediaWarning");
+        assertThat(schemas.at("/PhotoParameters/properties/cameraBody/maxLength").asInt()).isEqualTo(100);
+        assertThat(schemas.at("/PhotoParameters/properties/iso/maxLength").asInt()).isEqualTo(50);
+        List<String> warningCodes = new ArrayList<>();
+        schemas.at("/MediaWarning/properties/code/enum").forEach(value -> warningCodes.add(value.asText()));
+        assertThat(warningCodes).containsExactly("EXIF_PARSE_FAILED", "EXIF_CAPTURE_TIME_IN_FUTURE", "EXIF_FIELD_IGNORED");
+        assertThat(schemas.at("/PublicPhotoDetail/properties/media/items/$ref").asText())
+                .endsWith("/RevisionMediaView");
 
         JsonNode moderationTarget = schemas.path("ModerationTargetView").path("properties");
         assertThat(moderationTarget.at("/targetRevision/$ref").asText()).endsWith("/AuthorRevisionView");
