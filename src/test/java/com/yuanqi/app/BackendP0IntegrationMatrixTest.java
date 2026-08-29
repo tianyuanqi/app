@@ -1,5 +1,7 @@
 package com.yuanqi.app;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.yuanqi.app.auth.entity.Account;
 import com.yuanqi.app.auth.mapper.AccountMapper;
 import com.yuanqi.app.auth.service.AuthSessionService;
@@ -7,6 +9,7 @@ import com.yuanqi.app.common.api.ErrorCode;
 import com.yuanqi.app.common.exception.BusinessException;
 import com.yuanqi.app.moderation.service.ReviewService;
 import com.yuanqi.app.photo.dto.WorkRequests;
+import com.yuanqi.app.photo.service.MediaStorage;
 import com.yuanqi.app.photo.service.WorkService;
 import com.yuanqi.app.photo.vo.WorkViews;
 import org.junit.jupiter.api.Test;
@@ -15,11 +18,15 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
+import org.springframework.test.context.DynamicPropertyRegistry;
+import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.http.HttpHeaders;
 
 import java.time.LocalDateTime;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.List;
 import java.util.UUID;
 
@@ -37,12 +44,22 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @ActiveProfiles("test")
 @Transactional
 class BackendP0IntegrationMatrixTest {
+    private static final Path MEDIA_ROOT = Path.of(System.getProperty("java.io.tmpdir"),
+            "2400px-be005-matrix-" + UUID.randomUUID());
+
+    @DynamicPropertySource
+    static void properties(DynamicPropertyRegistry registry) {
+        registry.add("app.upload.dir", MEDIA_ROOT::toString);
+    }
+
     @Autowired JdbcTemplate jdbc;
     @Autowired AccountMapper accounts;
     @Autowired AuthSessionService sessions;
     @Autowired WorkService works;
     @Autowired ReviewService reviews;
     @Autowired MockMvc mockMvc;
+    @Autowired ObjectMapper objectMapper;
+    @Autowired MediaStorage storage;
 
     @Test void 真实HTTPMutation返回新ETag且旧条件版本失败() throws Exception {
         Account account = accounts.selectById(account("uid_http_etag", "USER"));
@@ -181,6 +198,10 @@ class BackendP0IntegrationMatrixTest {
         assertThat(draft.media().get(0).web().accessMode()).isEqualTo("BEARER_FETCH");
         assertThat(draft.media().get(0).web().mimeType()).isEqualTo("image/jpeg");
         assertThat(draft.media().get(0).parameters()).isNotNull();
+        WorkViews.AuthorWork saved = works.updateDraft(owner, created.summary().workId(),
+                created.summary().versionTag(), request);
+        assertThat(saved.workingRevision().category().categoryId()).isEqualTo("cat_landscape");
+        created = saved;
 
         WorkViews.AuthorWork pending = works.submit(owner, created.summary().workId(), created.summary().versionTag());
         var target = reviews.target(admin, created.summary().workId(), pending.workingRevision().revisionId());
@@ -192,6 +213,77 @@ class BackendP0IntegrationMatrixTest {
                 .isEqualTo("/api/v1/media/" + mediaId + "/web");
         assertThat(target.currentPublicRevision()).isNull();
         assertThat(target.author().uid()).isEqualTo("uid_consumer_owner");
+    }
+
+    @Test void 分类列表返回十一项真实唯一公开ID且草稿往返无损() throws Exception {
+        JsonNode response = objectMapper.readTree(mockMvc.perform(get("/api/v1/categories"))
+                .andExpect(status().isOk()).andReturn().getResponse().getContentAsByteArray());
+        JsonNode categories = response.path("data");
+        assertThat(categories).hasSize(11);
+        List<String> ids = new java.util.ArrayList<>();
+        categories.forEach(category -> ids.add(category.path("categoryId").asText()));
+        assertThat(ids).contains("cat_landscape", "cat_portrait", "cat_other")
+                .doesNotContain("null", "", "1");
+        assertThat(ids).doesNotHaveDuplicates();
+
+        long owner = account("uid_category_roundtrip", "USER");
+        String mediaId = media(owner, "media_category_roundtrip");
+        WorkRequests.Draft request = new WorkRequests.Draft("分类往返", null, null,
+                "cat_landscape", List.of(), List.of(mediaId));
+        WorkViews.AuthorWork created = works.create(owner, request);
+        assertThat(works.authorView(owner, created.summary().workId()).workingRevision()
+                .category().categoryId()).isEqualTo("cat_landscape");
+        WorkViews.AuthorWork saved = works.updateDraft(owner, created.summary().workId(),
+                created.summary().versionTag(), request);
+        assertThat(saved.workingRevision().category().categoryId()).isEqualTo("cat_landscape");
+    }
+
+    @Test void 待审Web媒体仅作者和管理员可读且无路径泄漏() throws Exception {
+        long owner = account("uid_media_owner", "USER");
+        long admin = account("uid_media_admin", "ADMIN");
+        long stranger = account("uid_media_stranger", "USER");
+        String mediaId = media(owner, "media_pending_review");
+        String unrelatedId = media(stranger, "media_unrelated_private");
+        Path web = storage.safe("web/" + mediaId + ".jpg");
+        Path unrelated = storage.safe("web/" + unrelatedId + ".jpg");
+        Files.createDirectories(web.getParent());
+        Files.write(web, new byte[]{(byte) 0xff, (byte) 0xd8, (byte) 0xff, (byte) 0xd9});
+        Files.write(unrelated, new byte[]{(byte) 0xff, (byte) 0xd8, (byte) 0xff, (byte) 0xd9});
+        try {
+            WorkViews.AuthorWork created = works.create(owner, draft("待审权限", mediaId));
+            WorkViews.AuthorWork pending = works.submit(owner, created.summary().workId(),
+                    created.summary().versionTag());
+            String url = pending.workingRevision().media().get(0).web().url();
+            String ownerToken = token(owner);
+            String adminToken = token(admin);
+            String strangerToken = token(stranger);
+
+            mockMvc.perform(get(url).header(HttpHeaders.AUTHORIZATION, ownerToken))
+                    .andExpect(status().isOk()).andExpect(header().string(HttpHeaders.CONTENT_TYPE, "image/jpeg"))
+                    .andExpect(header().exists(HttpHeaders.ETAG));
+            mockMvc.perform(get(url).header(HttpHeaders.AUTHORIZATION, adminToken))
+                    .andExpect(status().isOk()).andExpect(header().string(HttpHeaders.CONTENT_TYPE, "image/jpeg"))
+                    .andExpect(header().exists(HttpHeaders.ETAG));
+            mockMvc.perform(get(url).header(HttpHeaders.AUTHORIZATION, strangerToken))
+                    .andExpect(status().isNotFound()).andExpect(jsonPath("$.code").value("RESOURCE_NOT_FOUND"));
+            mockMvc.perform(get(url)).andExpect(status().isNotFound())
+                    .andExpect(jsonPath("$.code").value("RESOURCE_NOT_FOUND"));
+            mockMvc.perform(get("/api/v1/media/{mediaId}/web", unrelatedId)
+                            .header(HttpHeaders.AUTHORIZATION, adminToken))
+                    .andExpect(status().isNotFound()).andExpect(jsonPath("$.code").value("RESOURCE_NOT_FOUND"));
+
+            byte[] target = mockMvc.perform(get("/api/v1/moderation/photos/{workId}/revisions/{revisionId}",
+                            created.summary().workId(), pending.workingRevision().revisionId())
+                            .header(HttpHeaders.AUTHORIZATION, adminToken))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.data.targetRevision.media[0].web.accessMode").value("BEARER_FETCH"))
+                    .andReturn().getResponse().getContentAsByteArray();
+            assertThat(new String(target, java.nio.charset.StandardCharsets.UTF_8))
+                    .doesNotContain("original/", "staging/", MEDIA_ROOT.toString());
+        } finally {
+            Files.deleteIfExists(web);
+            Files.deleteIfExists(unrelated);
+        }
     }
 
     private long account(String uid, String role) {
@@ -215,6 +307,10 @@ class BackendP0IntegrationMatrixTest {
 
     private String sessionId(long accountId) {
         return jdbc.queryForObject("SELECT session_id FROM auth_session WHERE account_id=? ORDER BY id DESC LIMIT 1", String.class, accountId);
+    }
+
+    private String token(long accountId) {
+        return "Bearer " + sessions.issue(accounts.selectById(accountId)).view().accessToken();
     }
 
     private void assertTagChanged(WorkViews.AuthorWork before, WorkViews.AuthorWork after) {

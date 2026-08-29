@@ -25,6 +25,17 @@
 > 提示：下文保留的是 2026-08-12 接管时的历史人工索引，其中认证、分页及旧兼容路径
 > 尚未按 v1.0 冻结契约整体重写，不能覆盖当前运行时 `/v3/api-docs`。
 
+## V1-BE-005 分类与审核媒体权限增量（2026-08-29）
+
+- `GET /api/v1/categories` 的 `categoryId` 直接映射 `photo_category.public_id`，返回 11 个
+  唯一、非空的确定性字符串 ID，例如 `cat_landscape`；不得返回内部数字主键或字符串
+  `"null"`。
+- 作者选择的 `categoryId` 在创建草稿、读取 `AuthorRevisionView` 和再次保存草稿后保持不变。
+- 待审 Revision 的 `BEARER_FETCH` Web URL 允许媒体作者和有效 `ADMIN` 读取；普通用户、
+  匿名访问者以及管理员访问不属于当前 `PENDING` 审核目标的其他私有媒体时统一返回 404。
+- 管理员例外仅适用于 `GET /api/v1/media/{mediaId}/web` 的 Web 衍生图，不新增原图、暂存
+  文件或本机路径访问能力。
+
 ## 1. 通用约定
 
 - 本地 Base URL：`http://localhost:8080`

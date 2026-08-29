@@ -96,6 +96,7 @@ class OpenApiContractTest {
         assertThat(schemas.at("/WorkDraftRequest/properties/mediaIds/minItems").asInt()).isEqualTo(1);
         assertThat(schemas.at("/WorkDraftRequest/properties/mediaIds/maxItems").asInt()).isEqualTo(9);
         assertThat(schemas.at("/Comment/properties/content/maxLength").asInt()).isEqualTo(1000);
+        assertThat(schemas.at("/CategoryView/properties/categoryId/type").asText()).isEqualTo("string");
 
         JsonNode authorRevision = schemas.path("AuthorRevisionView").path("properties");
         assertThat(authorRevision.has("category")).isTrue();

@@ -2,6 +2,8 @@ package com.yuanqi.app.photo.service;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.yuanqi.app.auth.support.PublicIdGenerator;
+import com.yuanqi.app.auth.entity.Account;
+import com.yuanqi.app.auth.mapper.AccountMapper;
 import com.yuanqi.app.common.api.ErrorCode;
 import com.yuanqi.app.common.exception.BusinessException;
 import com.yuanqi.app.common.http.StrongEtag;
@@ -23,9 +25,12 @@ public class MediaService {
     private final MediaStorage storage;
     private final PublicIdGenerator ids;
     private final Clock clock;
+    private final AccountMapper accountMapper;
 
-    public MediaService(MediaAssetMapper mapper, MediaStorage storage, PublicIdGenerator ids, Clock clock) {
+    public MediaService(MediaAssetMapper mapper, MediaStorage storage, PublicIdGenerator ids, Clock clock,
+                        AccountMapper accountMapper) {
         this.mapper = mapper; this.storage = storage; this.ids = ids; this.clock = clock;
+        this.accountMapper = accountMapper;
     }
 
     public MediaViews.Processing upload(Long accountId, String clientUploadId, MultipartFile file) {
@@ -97,8 +102,12 @@ public class MediaService {
         MediaAsset asset = mapper.findByPublicId(mediaId);
         if (asset == null || !"READY".equals(asset.getStatus()) || asset.getWebStorageKey() == null)
             throw new BusinessException(ErrorCode.RESOURCE_NOT_FOUND);
-        if (!mapper.isPublicWeb(asset.getId()) && !asset.getOwnerAccountId().equals(accountId))
-            throw new BusinessException(ErrorCode.RESOURCE_NOT_FOUND);
+        if (!mapper.isPublicWeb(asset.getId()) && !asset.getOwnerAccountId().equals(accountId)) {
+            Account viewer = accountId == null ? null : accountMapper.selectById(accountId);
+            boolean pendingReviewAccess = viewer != null && "ADMIN".equals(viewer.getRole())
+                    && mapper.isPendingReviewWeb(asset.getId());
+            if (!pendingReviewAccess) throw new BusinessException(ErrorCode.RESOURCE_NOT_FOUND);
+        }
         return asset;
     }
 

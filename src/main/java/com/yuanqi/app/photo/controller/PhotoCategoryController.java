@@ -16,7 +16,8 @@ public class PhotoCategoryController {
     public PhotoCategoryController(PhotoCategoryMapper mapper){this.mapper=mapper;}
     @Operation(summary="分类列表；停用但仍被公开作品引用的分类保持可筛选")
     @GetMapping public Result<List<CategoryView>> list(){return Result.success(mapper.listViews().stream().map(m->new CategoryView(
-            String.valueOf(m.get("publicId")),String.valueOf(m.get("name")),bool(m.get("selectable")),bool(m.get("filterable")))).toList());}
+            string(m.get("categoryId")),string(m.get("name")),bool(m.get("selectable")),bool(m.get("filterable")))).toList());}
+    private String string(Object value){return value instanceof String text?text:null;}
     private boolean bool(Object v){return v instanceof Boolean b?b:v instanceof Number n&&n.intValue()!=0;}
     public record CategoryView(String categoryId,String name,boolean selectable,boolean filterable){}
 }
