@@ -114,7 +114,7 @@ public class PhotoServiceImpl implements PhotoService {
                 continue;
             }
             PhotoTag photoTag = photoTagService.getOrCreate(name.trim());
-            photoTagRelationMapper.insert(new PhotoTagRelation(photo.getId(), photoTag.getId()));
+            photoTagRelationMapper.insertRelation(photo.getId(), photoTag.getId());
         }
         return photoAssembler.toDetail(photo);
     }
@@ -200,12 +200,11 @@ public class PhotoServiceImpl implements PhotoService {
         photoInfoMapper.updateById(photo);
 
         if (request.getTags() != null) {
-            photoTagRelationMapper.delete(new LambdaQueryWrapper<PhotoTagRelation>()
-                    .eq(PhotoTagRelation::getPhotoId, photoId));
+            photoTagRelationMapper.deleteByPhotoId(photoId);
             request.getTags().stream().map(String::trim).filter(this::hasText).distinct().limit(20)
                     .forEach(name -> {
                         PhotoTag tag = photoTagService.getOrCreate(name);
-                        photoTagRelationMapper.insert(new PhotoTagRelation(photoId, tag.getId()));
+                        photoTagRelationMapper.insertRelation(photoId, tag.getId());
                     });
         }
         return photoAssembler.toDetail(photo);
@@ -215,8 +214,7 @@ public class PhotoServiceImpl implements PhotoService {
     @Override
     public void delete(Long photoId, Long userId) {
         requireOwnedPhoto(photoId, userId);
-        photoTagRelationMapper.delete(new LambdaQueryWrapper<PhotoTagRelation>()
-                .eq(PhotoTagRelation::getPhotoId, photoId));
+        photoTagRelationMapper.deleteByPhotoId(photoId);
         photoInfoMapper.deleteById(photoId);
     }
 
@@ -266,8 +264,7 @@ public class PhotoServiceImpl implements PhotoService {
         Set<Long> tagIds = resolveTagIds(request);
         if (tagIds != null) {
             List<Long> photoIds = tagIds.isEmpty() ? List.of() :
-                    photoTagRelationMapper.selectList(new LambdaQueryWrapper<PhotoTagRelation>()
-                                    .in(PhotoTagRelation::getTagId, tagIds))
+                    photoTagRelationMapper.listByTagIds(List.copyOf(tagIds))
                             .stream().map(PhotoTagRelation::getPhotoId).distinct().toList();
             applyIdFilter(wrapper, PhotoInfo::getId, photoIds);
         }

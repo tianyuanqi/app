@@ -102,8 +102,7 @@ public class PhotoAssembler {
             categoryVO.setName(category.getName());
             vo.setCategory(categoryVO);
         }
-        List<Long> tagIds = photoTagRelationMapper.selectList(new LambdaQueryWrapper<PhotoTagRelation>()
-                        .eq(PhotoTagRelation::getPhotoId, photo.getId()))
+        List<Long> tagIds = photoTagRelationMapper.listByPhotoId(photo.getId())
                 .stream().map(PhotoTagRelation::getTagId).toList();
         List<PhotoTag> tags = tagIds.isEmpty() ? List.of() : photoTagMapper.selectBatchIds(tagIds);
         vo.setTags(tags.stream().map(tag -> {

@@ -10,6 +10,7 @@ import org.springframework.test.web.servlet.MockMvc;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -38,5 +39,13 @@ class AdminContractSecurityTest {
         mockMvc.perform(get("/api/v1/moderation/photos/w_unknown"))
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.code").value("FORBIDDEN"));
+    }
+
+    @Test
+    void HTTPBasic不启用且仍由自定义认证入口处理() throws Exception {
+        mockMvc.perform(get("/api/v1/admin/users/u_unknown").header("Authorization", "Basic eDp4"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(header().doesNotExist("WWW-Authenticate"))
+                .andExpect(jsonPath("$.code").value("SESSION_INVALID"));
     }
 }

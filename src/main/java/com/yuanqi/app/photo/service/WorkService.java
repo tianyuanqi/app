@@ -197,7 +197,7 @@ public class WorkService {
     private void copyMedia(Long sourceId, Long targetId) {
         for (RevisionMedia item : revisionMediaMapper.listByRevision(sourceId)) {
             item.setRevisionId(targetId);
-            revisionMediaMapper.insert(item);
+            revisionMediaMapper.insertRelation(item);
         }
     }
 
@@ -225,7 +225,7 @@ public class WorkService {
             if (manual != null) applyManual(relation, manual);
             else if (previous.containsKey(media.getId())) copyParameters(previous.get(media.getId()), relation);
             else applyExif(media, relation);
-            revisionMediaMapper.insert(relation);
+            revisionMediaMapper.insertRelation(relation);
         }
         if (total > 200L * 1024 * 1024) throw new BusinessException(ErrorCode.FILE_TOO_LARGE);
     }
