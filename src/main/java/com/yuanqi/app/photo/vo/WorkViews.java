@@ -68,6 +68,9 @@ public final class WorkViews {
     }
 
     @Schema(name = "PhotoDeleteResult")
-    public record DeleteResult(String workId, boolean deleted, OffsetDateTime deletedAt) {
+    public record DeleteResult(
+            @Schema(requiredMode = Schema.RequiredMode.REQUIRED) String workId,
+            @Schema(requiredMode = Schema.RequiredMode.REQUIRED) boolean deleted,
+            @Schema(requiredMode = Schema.RequiredMode.REQUIRED) OffsetDateTime deletedAt) {
     }
 }

@@ -142,6 +142,27 @@ class OpenApiContractTest {
         assertThat(moderationTarget.at("/currentPublicRevision/$ref").asText()).endsWith("/PublicRevisionSummary");
         assertThat(moderationTarget.at("/author/$ref").asText()).endsWith("/PublicAuthorView");
         assertThat(moderationTarget.has("mediaIds")).isFalse();
+
+        JsonNode avatarUpload = root.at("/paths/~1api~1v1~1users~1me~1avatar/post");
+        JsonNode avatarRequest = avatarUpload.at("/requestBody/content/multipart~1form-data/schema");
+        assertThat(avatarRequest.at("/required/0").asText()).isEqualTo("file");
+        assertThat(avatarRequest.path("properties").fieldNames()).toIterable().containsExactly("file");
+        assertThat(avatarRequest.at("/properties/file/format").asText()).isEqualTo("binary");
+        assertThat(avatarUpload.at("/responses/200/content/*~1*/schema/$ref").asText())
+                .endsWith("/ResultAvatarMutationResult");
+        assertThat(schemas.at("/AvatarMutationResult/required")).containsExactlyInAnyOrder(
+                mapper.valueToTree("avatar"), mapper.valueToTree("profileVersionTag"));
+        assertThat(schemas.at("/AvatarMutationResult/properties/avatar/$ref").asText()).endsWith("/WebMediaRef");
+
+        JsonNode adminDelete = root.at("/paths/~1api~1v1~1moderation~1photos~1{workId}/delete");
+        assertThat(adminDelete.at("/responses/200/content/*~1*/schema/$ref").asText())
+                .endsWith("/ResultPhotoDeleteResult");
+        assertThat(adminDelete.at("/responses/200/headers/ETag/schema/type").asText()).isEqualTo("string");
+        assertThat(schemas.at("/PhotoDeleteResult/required")).containsExactlyInAnyOrder(
+                mapper.valueToTree("workId"), mapper.valueToTree("deleted"), mapper.valueToTree("deletedAt"));
+        assertThat(schemas.at("/PhotoDeleteResult/properties/workId/type").asText()).isEqualTo("string");
+        assertThat(schemas.at("/PhotoDeleteResult/properties/deleted/type").asText()).isEqualTo("boolean");
+        assertThat(schemas.at("/PhotoDeleteResult/properties/deletedAt/format").asText()).isEqualTo("date-time");
     }
 
     private JsonNode openApi() throws Exception {

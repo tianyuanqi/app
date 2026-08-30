@@ -121,7 +121,7 @@ public class ModerationController {
 
     @Operation(summary = "管理员彻底删除作品并仅保留最小记录")
     @DeleteMapping("/{workId}")
-    public Result<WorkViews.DeleteResult> delete(
+    public ResponseEntity<Result<WorkViews.DeleteResult>> delete(
             @PathVariable String workId,
             @RequestHeader(value = HttpHeaders.IF_MATCH, required = false) String ifMatch,
             @RequestHeader(value = "Idempotency-Key", required = false) String key,
@@ -130,8 +130,9 @@ public class ModerationController {
                 Map.of("workId", workId, "ifMatch", String.valueOf(ifMatch),
                         "confirmation", request.confirmation(), "reason", request.reason()),
                 WorkViews.DeleteResult.class,
-                () -> ResponseEntity.ok(Result.success(deletionService.deleteAdmin(UserContext.getUserId(), workId,
-                        ifMatch, request.confirmation(), request.reason())))).getBody();
+                () -> ResponseEntity.ok().header(HttpHeaders.ETAG, ifMatch)
+                        .body(Result.success(deletionService.deleteAdmin(UserContext.getUserId(), workId,
+                                ifMatch, request.confirmation(), request.reason()))));
     }
 
     private ResponseEntity<Result<ModerationViews.Mutation>> response(ModerationViews.Mutation view) {
