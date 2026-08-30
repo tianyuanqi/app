@@ -1,7 +1,7 @@
 status: development_incomplete
-as_of: "2026-08-30"
+as_of: "2026-08-31"
 phase: v1_backend_development
-work_package: V1-BE-009
+work_package: V1-BE-010
 workflow_revision: WF-2026-08-28-02
 release: 2400px-v1.0
 requirements_baseline: v1.0-REQ-R4
@@ -11,7 +11,7 @@ repository:
   path: /Users/yuanqi/2400px/app
   branch: codex/v1-backend
   source_commit: 3f31f4c1499f58394c2e6355446f43903d4bd768
-  current_commit_before_handoff_update: e18d0e6
+  current_commit_before_handoff_update: b8f7331
   remote_modified: false
   pushed: false
   pull_request_created: false
@@ -31,9 +31,9 @@ environment:
   spring_boot: 3.5.16
   runtime_profile: test
   isolated_development_schema: px2400_v1_dev
-  isolated_targeted_schema: px2400_v1_be009_20260830
-  isolated_test_schema: px2400_v1_be009_20260830
-  isolated_runtime_schema: px2400_v1_be009_20260830
+  isolated_targeted_schema: px2400_v1_be010_targeted_20260831
+  isolated_test_schema: px2400_v1_be010_verify_final_20260831
+  isolated_runtime_schema: px2400_v1_be010_runtime_20260831
   flyway_schema_version: 16
   temporary_runtime_stopped: true
   temporary_runtime_removed: true
@@ -71,50 +71,53 @@ implementation_slices:
     scope: StoragePort、跨 DB/文件补偿、双向对账、立即撤权、租约 Worker 与幂等清理
   - commit: e18d0e6
     scope: 头像解码与 512×512 契约、管理员彻底删除外键顺序、固定响应 DTO/ETag 及闭环测试
+  - commit: b8f7331
+    scope: 复合主键关联 Mapper 显式 SQL 化，并排除 Spring 默认内存用户自动配置
 
 runtime_contract:
-  authority: http://127.0.0.1:18089/v3/api-docs
-  evidence_file: /private/tmp/2400px-v1-be009-openapi.json
-  sha256: 25968d008895bc2fabc3110ae33be03e08d599a4911f18c6106fdf2016da4c3a
+  authority: http://127.0.0.1:18090/v3/api-docs
+  evidence_file: /private/tmp/2400px-v1-be010-final-openapi.json
+  sha256: dc5f4bf9a2bddb813adfa87d31daf77a4c0d47b3b2d521a4c5597535b322dd4f
   bytes: 332436
   paths: 40
   operations: 51
   api_prefix: /api/v1
   response_envelope: "{code, message, data}"
   legacy_home_paths_present: false
-  note: 该文件已在记录哈希后随临时运行时安全移入系统废纸篓；头像和管理员删除 Schema 已闭环，Path/Operation 保持 40/51。
+  note: V1-BE-010 最终构建在隔离运行时导出；Path/Operation 保持 40/51，随后随临时运行时清理，不代表已变更或批准运行时契约。
 
 verification:
   clean_verify:
     command: ./mvnw clean verify
     result: passed
-    tests_run: 53
+    tests_run: 57
     failures: 0
     errors: 0
     skipped: 0
   tests:
-    - { suite: AppApplicationTests, count: 1, result: passed }
+    - { suite: AppApplicationTests, count: 2, result: passed }
     - { suite: AuthPolicyTest, count: 3, result: passed }
     - { suite: CsrfTokenServiceTest, count: 1, result: passed }
     - { suite: UnicodeTextTest, count: 4, result: passed }
     - { suite: IdempotencyServiceTest, count: 3, result: passed }
     - { suite: StrongEtagTest, count: 2, result: passed }
     - { suite: OpenApiContractTest, count: 3, result: passed }
-    - { suite: AdminContractSecurityTest, count: 2, result: passed }
+    - { suite: AdminContractSecurityTest, count: 3, result: passed }
     - { suite: BackendP0IntegrationMatrixTest, count: 10, result: passed }
     - { suite: ExifTimeRulesIntegrationTest, count: 3, result: passed }
     - { suite: ExifErrorLocationIntegrationTest, count: 6, result: passed }
     - { suite: MediaProcessorIntegrationTest, count: 6, result: passed }
     - { suite: MediaConsistencyCleanupIntegrationTest, count: 6, result: passed }
     - { suite: AvatarDeleteContractIntegrationTest, count: 3, result: passed }
+    - { suite: P2HardeningContractTest, count: 2, result: passed }
   fresh_database:
     result: passed
-    schema: px2400_v1_be009_20260830
+    schema: px2400_v1_be010_verify_final_20260831
     migrations: V1-V16
-    note: 该 Schema 从空状态一次性成功应用 V1～V16；首轮定向暴露问题后重新建立干净验证状态并完成最终测试与 runtime。
+    note: 最终验证 Schema 从空状态一次性成功应用 V1～V16；定向验证亦使用独立空 Schema，未读取旧数据库。
   runtime_startup:
     result: passed
-    schema: px2400_v1_be009_20260830
+    schema: px2400_v1_be010_runtime_20260831
     migrations_validated: 16
   health_check:
     result: passed
@@ -194,14 +197,32 @@ implemented_capabilities:
   governance:
     - 管理员只治理普通用户，记录原因、操作者、动作与时间
     - 查询返回隔离邮箱和完整生日
+  p2_hardening:
+    - PhotoTagRelationMapper 与 RevisionMediaMapper 不再继承 BaseMapper；仅保留显式复合键关联 SQL，禁止误用 ById API
+    - 应用显式排除 UserDetailsServiceAutoConfiguration；仅保留既有 JWT 安全链，不创建 Spring 默认内存用户
 
 integration_readiness:
   backend_overall_ready: false
   frontend_can_integrate: true
   tester_can_accept: true
-  reason: V1-BE-GAP-007 已通过 53-test clean verify、空库 V16、运行时 OpenAPI、真实头像和管理员删除链路，达到可供 Coordinator 核验；整体开发仍因明确保留的 P2 与部署 Gate 项未完成而不是 release-ready。
+  reason: V1-BE-GAP-008/009 已通过 57-test clean verify、空库 V1～V16、健康检查与运行时 OpenAPI，达到可供 Coordinator 核验；整体开发仍因 V1-BE-GAP-005 和部署 Gate 项未完成而不是 release-ready。
 
 backend_findings:
+  V1-BE-GAP-009:
+    status: ready_for_coordinator_verification
+    evidence:
+      - AppApplication 显式排除 UserDetailsServiceAutoConfiguration；ApplicationContext 中不存在 UserDetailsService
+      - 最终运行时日志无 "Using generated security password"，HTTP Basic 请求返回 401/SESSION_INVALID 且无 WWW-Authenticate
+      - 既有 JWT FilterChain 保留；匿名管理员读取仍为 401/AUTH_REQUIRED
+      - 全新空库 V1～V16、定向 17/17、clean verify 57/57、健康 UP 和 40 Path/51 Operation OpenAPI 均通过
+    required_next_action: Coordinator 核对实现/证据 Commit 后决定是否 CLOSED
+  V1-BE-GAP-008:
+    status: ready_for_coordinator_verification
+    evidence:
+      - PhotoTagRelationMapper 与 RevisionMediaMapper 已移除 BaseMapper，并以显式 insert/list/delete 关联 SQL 替代
+      - 复合键实体未添加伪造 @TableId；最终运行时日志无 "Not found @TableId" 或 "Cannot use ... ById" 警告
+      - 定向 Mapper/调用点契约检查、空库 V1～V16、clean verify 57/57、健康 UP 和 40 Path/51 Operation OpenAPI 均通过
+    required_next_action: Coordinator 核对实现/证据 Commit 后决定是否 CLOSED
   V1-BE-GAP-007:
     status: ready_for_coordinator_verification
     evidence:
@@ -321,11 +342,11 @@ blocking_gaps:
   - id: V1-BE-GAP-008
     priority: P2
     area: persistence
-    summary: 复合主键实体启动时仍有 MyBatis-Plus 无 TableId 警告，必须持续禁止误用 ById API。
+    summary: 已移除复合主键 Mapper 的 BaseMapper 继承并保留显式关联 SQL；通过定向、空库、clean verify 与运行时无警告证据，当前为 ready_for_coordinator_verification，仅 Coordinator 可决定 CLOSED。
   - id: V1-BE-GAP-009
     priority: P2
     area: security_hardening
-    summary: 启动日志仍出现未使用的 Spring 默认内存用户密码，生产加固前应移除默认认证 Bean。
+    summary: 已显式排除 UserDetailsServiceAutoConfiguration；ApplicationContext 无默认 UserDetailsService，运行时无默认密码日志且 HTTP Basic 未启用，当前为 ready_for_coordinator_verification，仅 Coordinator 可决定 CLOSED。
 
 database_safety:
   old_database_migrated: false
@@ -339,6 +360,6 @@ database_safety:
 
 handoff_conclusion:
   result: pass_with_findings
-  summary: V1-BE-GAP-007 已在 Commit e18d0e6 闭环头像 512×512 上传、管理员彻底删除固定响应/ETag/幂等和实际外键删除顺序；全新空库 V1～V16 通过 53 个 clean verify 测试，并具备真实 HTTP 与 40 Path/51 Operation OpenAPI 证据。该 Finding 仅标为 ready_for_coordinator_verification；Backend 整体仍因 V1-BE-GAP-005/008/009 保持 development_incomplete。
-  required_next_action: Coordinator 应核对实现/证据 Commit 与 Frontend 既有消费者后决定 V1-BE-GAP-007 是否 CLOSED；Tester 正式测试仍需单独确认。
-  detailed_evidence: /Users/yuanqi/2400px/app/handoff/evidence/v1-be-009-avatar-delete-contract-verification.md
+  summary: V1-BE-GAP-008/009 已在 Commit b8f7331 完成复合键 Mapper 显式 SQL 化和默认内存用户自动配置排除；全新空库 V1～V16 通过 57 个 clean verify 测试，并具备健康、权限矩阵、无启动警告和 40 Path/51 Operation OpenAPI 证据。两个 Finding 均仅标为 ready_for_coordinator_verification；Backend 整体仍因 V1-BE-GAP-005 和部署 Gate 项保持 development_incomplete。
+  required_next_action: Coordinator 应核对 V1-BE-GAP-008/009 的实现/证据 Commit 后决定是否 CLOSED；Tester 正式测试仍需单独确认。
+  detailed_evidence: /Users/yuanqi/2400px/app/handoff/evidence/v1-be-010-p2-hardening.md
