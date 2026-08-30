@@ -13,6 +13,8 @@ import com.yuanqi.app.photo.vo.MediaViews;
 import com.yuanqi.app.photo.vo.WorkViews;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
@@ -25,15 +27,19 @@ import java.util.List;
 @Service
 public class MediaService {
     private final MediaAssetMapper mapper;
-    private final MediaStorage storage;
+    private final StoragePort storage;
     private final PublicIdGenerator ids;
     private final Clock clock;
     private final AccountMapper accountMapper;
+    private final MediaCleanupService cleanup;
+    private final TransactionTemplate transactions;
 
-    public MediaService(MediaAssetMapper mapper, MediaStorage storage, PublicIdGenerator ids, Clock clock,
-                        AccountMapper accountMapper) {
+    public MediaService(MediaAssetMapper mapper, StoragePort storage, PublicIdGenerator ids, Clock clock,
+                        AccountMapper accountMapper, MediaCleanupService cleanup,
+                        PlatformTransactionManager transactionManager) {
         this.mapper = mapper; this.storage = storage; this.ids = ids; this.clock = clock;
-        this.accountMapper = accountMapper;
+        this.accountMapper = accountMapper; this.cleanup = cleanup;
+        this.transactions = new TransactionTemplate(transactionManager);
     }
 
     public MediaViews.Processing upload(Long accountId, String clientUploadId, MultipartFile file) {
@@ -46,16 +52,24 @@ public class MediaService {
         String staging;
         try { staging = storage.stage(mediaId, file.getInputStream()); }
         catch (IOException e) { throw new BusinessException(ErrorCode.STORAGE_UNAVAILABLE); }
-        try { return create(accountId, clientUploadId, file.getSize(), mediaId, staging); }
+        try {
+            MediaViews.Processing created = transactions.execute(status ->
+                    create(accountId, clientUploadId, file.getSize(), mediaId, staging));
+            if (created == null) throw new BusinessException(ErrorCode.INTERNAL_ERROR);
+            return created;
+        }
         catch (RuntimeException e) {
-            try { storage.delete(staging); } catch (IOException ignored) { }
+            try { storage.delete(staging); }
+            catch (IOException cleanupFailure) { cleanup.enqueueStorage(staging, "UPLOAD_COMPENSATION", now()); }
+            MediaAsset raced = mapper.selectOne(new LambdaQueryWrapper<MediaAsset>()
+                    .eq(MediaAsset::getOwnerAccountId, accountId).eq(MediaAsset::getClientUploadId, clientUploadId));
+            if (raced != null) return view(raced);
             throw e;
         }
     }
 
-    @Transactional
-    protected MediaViews.Processing create(Long accountId, String clientUploadId, long size,
-                                           String mediaId, String staging) {
+    private MediaViews.Processing create(Long accountId, String clientUploadId, long size,
+                                         String mediaId, String staging) {
         LocalDateTime now = now();
         MediaAsset asset = new MediaAsset(); asset.setMediaId(mediaId); asset.setClientUploadId(clientUploadId);
         asset.setOwnerAccountId(accountId); asset.setPurpose("PHOTO"); asset.setOriginalStorageKey(staging);
@@ -93,10 +107,7 @@ public class MediaService {
         if (asset == null || !accountId.equals(asset.getOwnerAccountId())) throw new BusinessException(ErrorCode.RESOURCE_NOT_FOUND);
         match(ifMatch, asset);
         if (mapper.isReferenced(asset.getId())) throw new BusinessException(ErrorCode.STATE_CONFLICT);
-        try { storage.delete(asset.getOriginalStorageKey()); storage.delete(asset.getWebStorageKey()); }
-        catch (IOException e) { throw new BusinessException(ErrorCode.STORAGE_UNAVAILABLE); }
-        asset.setStatus("DELETED"); asset.setOriginalStorageKey(null); asset.setWebStorageKey(null);
-        asset.setUpdatedAt(now()); asset.setRowVersion(asset.getRowVersion() + 1); mapper.updateById(asset);
+        cleanup.logicalDelete(asset, "OWNER_MEDIA_DELETE");
         return new MediaViews.DeleteResult(asset.getMediaId(), true, asset.getStatus());
     }
 

@@ -30,15 +30,16 @@ import java.util.Locale;
 @Service
 public class MediaProcessor {
     private final MediaAssetMapper mapper;
-    private final MediaStorage storage;
+    private final StoragePort storage;
     private final Clock clock;
     private final ExifExtractor exifExtractor;
     private final TransactionTemplate transactions;
+    private final MediaCleanupService cleanup;
 
-    public MediaProcessor(MediaAssetMapper mapper, MediaStorage storage, Clock clock, ExifExtractor exifExtractor,
-                          PlatformTransactionManager transactionManager) {
+    public MediaProcessor(MediaAssetMapper mapper, StoragePort storage, Clock clock, ExifExtractor exifExtractor,
+                          PlatformTransactionManager transactionManager, MediaCleanupService cleanup) {
         this.mapper = mapper; this.storage = storage; this.clock = clock; this.exifExtractor = exifExtractor;
-        this.transactions = new TransactionTemplate(transactionManager);
+        this.transactions = new TransactionTemplate(transactionManager); this.cleanup = cleanup;
     }
 
     @Scheduled(fixedDelayString = "${app.media.worker-delay-ms:1000}")
@@ -74,7 +75,8 @@ public class MediaProcessor {
             applyExif(asset, exif);
         } catch (MediaValidationException e) {
             asset.setStatus("FAILED"); asset.setFailureCode(e.code); asset.setRetryable(false);
-            try { storage.delete(staging); } catch (IOException ignored) { }
+            try { storage.delete(staging); }
+            catch (IOException cleanupFailure) { cleanup.enqueueStorage(staging, "VALIDATION_COMPENSATION", now()); }
             asset.setOriginalStorageKey(null);
         } catch (Exception e) {
             asset.setStatus("FAILED"); asset.setFailureCode("PROCESSING_FAILED"); asset.setRetryable(true);
@@ -128,13 +130,14 @@ public class MediaProcessor {
             graphics.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BICUBIC);
             graphics.drawImage(original, 0, 0, targetWidth, targetHeight, null);
         } finally { graphics.dispose(); }
-        java.nio.file.Path target = storage.safe(key); Files.createDirectories(target.getParent());
-        if (!ImageIO.write(output, "jpeg", target.toFile())) throw new IOException("JPEG writer unavailable");
+        try (var target = storage.create(key)) {
+            if (!ImageIO.write(output, "jpeg", target)) throw new IOException("JPEG writer unavailable");
+        }
     }
 
     private String sha256(String key) throws Exception {
         MessageDigest digest = MessageDigest.getInstance("SHA-256");
-        try (InputStream in = Files.newInputStream(storage.safe(key))) {
+        try (InputStream in = storage.open(key)) {
             byte[] buffer = new byte[8192]; int read;
             while ((read = in.read(buffer)) >= 0) digest.update(buffer, 0, read);
         }

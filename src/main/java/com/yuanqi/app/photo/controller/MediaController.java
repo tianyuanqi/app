@@ -4,7 +4,7 @@ import com.yuanqi.app.common.api.Result;
 import com.yuanqi.app.common.context.UserContext;
 import com.yuanqi.app.photo.entity.MediaAsset;
 import com.yuanqi.app.photo.service.MediaService;
-import com.yuanqi.app.photo.service.MediaStorage;
+import com.yuanqi.app.photo.service.StoragePort;
 import com.yuanqi.app.photo.vo.MediaViews;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
@@ -35,9 +35,9 @@ import java.util.Map;
 @RequestMapping("/api/v1/media")
 public class MediaController {
     private final MediaService service;
-    private final MediaStorage storage;
+    private final StoragePort storage;
     private final IdempotencyService idempotency;
-    public MediaController(MediaService service, MediaStorage storage, IdempotencyService idempotency) { this.service = service; this.storage = storage; this.idempotency=idempotency; }
+    public MediaController(MediaService service, StoragePort storage, IdempotencyService idempotency) { this.service = service; this.storage = storage; this.idempotency=idempotency; }
 
     @Operation(summary = "上传作品原图", security = @SecurityRequirement(name = "Authorization"))
     @PostMapping(value = "/photos", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)

@@ -24,6 +24,7 @@ public interface MediaAssetMapper extends BaseMapper<MediaAsset> {
             "AND r.state='PENDING')")
     boolean isPendingReviewWeb(@Param("mediaId") Long mediaId);
 
-    @Select("SELECT COUNT(*)>0 FROM revision_media WHERE media_id=#{mediaId}")
+    @Select("SELECT (EXISTS(SELECT 1 FROM revision_media WHERE media_id=#{mediaId}) " +
+            "OR EXISTS(SELECT 1 FROM user_profile WHERE avatar_media_id=#{mediaId}))")
     boolean isReferenced(@Param("mediaId") Long mediaId);
 }
