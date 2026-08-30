@@ -1,7 +1,7 @@
 status: development_incomplete
 as_of: "2026-08-30"
 phase: v1_backend_development
-work_package: V1-BE-008
+work_package: V1-BE-009
 workflow_revision: WF-2026-08-28-02
 release: 2400px-v1.0
 requirements_baseline: v1.0-REQ-R4
@@ -10,8 +10,8 @@ human_gate_3: Passed
 repository:
   path: /Users/yuanqi/2400px/app
   branch: codex/v1-backend
-  source_commit: 14ee6dcad407364c8ed616efa5b7e0eb9fd94922
-  current_commit_before_handoff_update: 2502a0b
+  source_commit: 3f31f4c1499f58394c2e6355446f43903d4bd768
+  current_commit_before_handoff_update: e18d0e6
   remote_modified: false
   pushed: false
   pull_request_created: false
@@ -29,11 +29,11 @@ environment:
   maven: 3.9.14
   mysql_client: 8.0.30
   spring_boot: 3.5.16
-  runtime_profile: local
+  runtime_profile: test
   isolated_development_schema: px2400_v1_dev
-  isolated_targeted_schema: px2400_v1_be008_targeted_final2_20260830
-  isolated_test_schema: px2400_v1_be008_verify_20260830
-  isolated_runtime_schema: px2400_v1_be008_runtime_20260830
+  isolated_targeted_schema: px2400_v1_be009_20260830
+  isolated_test_schema: px2400_v1_be009_20260830
+  isolated_runtime_schema: px2400_v1_be009_20260830
   flyway_schema_version: 16
   temporary_runtime_stopped: true
   temporary_runtime_removed: true
@@ -69,24 +69,26 @@ implementation_slices:
     scope: 逐图拍摄参数的稳定数组项、公开媒体 ID 与字段错误定位
   - commit: 2502a0b
     scope: StoragePort、跨 DB/文件补偿、双向对账、立即撤权、租约 Worker 与幂等清理
+  - commit: e18d0e6
+    scope: 头像解码与 512×512 契约、管理员彻底删除外键顺序、固定响应 DTO/ETag 及闭环测试
 
 runtime_contract:
-  authority: http://127.0.0.1:18088/v3/api-docs
-  evidence_file: /private/tmp/2400px-v1-be008-runtime-openapi.json
-  sha256: 3aefdbcf51a1e3dea84d7c1f319ea28affca23440990297d98bf4dcebf5119bb
-  bytes: 332290
+  authority: http://127.0.0.1:18089/v3/api-docs
+  evidence_file: /private/tmp/2400px-v1-be009-openapi.json
+  sha256: 25968d008895bc2fabc3110ae33be03e08d599a4911f18c6106fdf2016da4c3a
+  bytes: 332436
   paths: 40
   operations: 51
   api_prefix: /api/v1
   response_envelope: "{code, message, data}"
   legacy_home_paths_present: false
-  note: 该文件已在记录哈希后随临时运行时安全移入系统废纸篓；40 Path/51 Operation、332290 bytes 与契约测试保持不变，哈希差异来自运行时 Server URL 端口变化，没有消费者业务契约变化。
+  note: 该文件已在记录哈希后随临时运行时安全移入系统废纸篓；头像和管理员删除 Schema 已闭环，Path/Operation 保持 40/51。
 
 verification:
   clean_verify:
     command: ./mvnw clean verify
     result: passed
-    tests_run: 50
+    tests_run: 53
     failures: 0
     errors: 0
     skipped: 0
@@ -104,14 +106,15 @@ verification:
     - { suite: ExifErrorLocationIntegrationTest, count: 6, result: passed }
     - { suite: MediaProcessorIntegrationTest, count: 6, result: passed }
     - { suite: MediaConsistencyCleanupIntegrationTest, count: 6, result: passed }
+    - { suite: AvatarDeleteContractIntegrationTest, count: 3, result: passed }
   fresh_database:
     result: passed
-    schema: px2400_v1_be008_verify_20260830
+    schema: px2400_v1_be009_20260830
     migrations: V1-V16
-    note: 该 Schema 从空状态一次性成功应用 V1～V16；首个 V16 诊断 Schema 因同条 ALTER 内同名 FK 重建失败后被弃用，最终定向、verify 与 runtime 均使用新空 Schema。
+    note: 该 Schema 从空状态一次性成功应用 V1～V16；首轮定向暴露问题后重新建立干净验证状态并完成最终测试与 runtime。
   runtime_startup:
     result: passed
-    schema: px2400_v1_be008_runtime_20260830
+    schema: px2400_v1_be009_20260830
     migrations_validated: 16
   health_check:
     result: passed
@@ -150,6 +153,8 @@ integration_matrix:
   - { invariant: 并发 Runner 只产生一次有效领取且终态幂等, test: MediaConsistencyCleanupIntegrationTest.并发Runner只领取一次且重复执行稳定 }
   - { invariant: 双向对账识别无 DB 文件、缺文件、重复键和状态异常且不误删合法媒体, test: MediaConsistencyCleanupIntegrationTest.双向对账识别四类异常且不清理合法或新文件 }
   - { invariant: 补偿删除失败持久排队且 ClientUploadId 不生成重复 Asset, test: MediaConsistencyCleanupIntegrationTest.校验失败的补偿删除失败会登记持久任务且不生成重复Asset }
+  - { invariant: Frontend 等价 512×512 头像文件经 JPEG/PNG/WebP 归一化且不保留原始上传, test: AvatarDeleteContractIntegrationTest }
+  - { invariant: 管理员彻底删除返回固定 PhotoDeleteResult、强 ETag、幂等重放并立即撤权, test: AvatarDeleteContractIntegrationTest }
 
 implemented_capabilities:
   authentication:
@@ -175,10 +180,12 @@ implemented_capabilities:
     - 作者/管理员彻底删除、独立媒体删除与 Avatar 替换均先 DELETE_PENDING 立即撤权，再由持久任务幂等物理清理
     - 双向对账识别无 DB 文件、DB 引用缺失、重复 Storage Key、状态异常和过期无引用媒体
     - 清理任务具备原因、尝试次数、下次重试、24 小时 deadline、短租约恢复、错误分类和明确终态
+    - 头像 multipart 仅接收 Frontend 已裁剪文件，归一化为 512×512 JPEG，不保存原始上传
   moderation:
     - 待审队列、目标详情、历史、批准、驳回、下架及恢复
     - 允许管理员自审并记录 selfReview
     - 审核事件与乐观并发版本
+    - 管理员彻底删除返回固定 PhotoDeleteResult、强 ETag，并支持幂等响应重放
   interaction:
     - 唯一点赞、取消点赞、允许作者自赞
     - 两级评论、回复分页、删除占位与管理员删除
@@ -192,9 +199,18 @@ integration_readiness:
   backend_overall_ready: false
   frontend_can_integrate: true
   tester_can_accept: true
-  reason: V1-BE-GAP-006 已通过 50-test clean verify、空库 V16、故障/并发矩阵与真实 HTTP 立即撤权链路，达到可供 Coordinator 核验；既有 V1-BE-GAP-004 仍待 Frontend 最小回归，整体开发也因明确保留的其他 P1/P2 未完成而不是 release-ready。
+  reason: V1-BE-GAP-007 已通过 53-test clean verify、空库 V16、运行时 OpenAPI、真实头像和管理员删除链路，达到可供 Coordinator 核验；整体开发仍因明确保留的 P2 与部署 Gate 项未完成而不是 release-ready。
 
 backend_findings:
+  V1-BE-GAP-007:
+    status: ready_for_coordinator_verification
+    evidence:
+      - 头像 multipart 仅有必需 file，无服务端裁剪坐标；AvatarMutationResult 必需 avatar/profileVersionTag
+      - JPEG/PNG/WebP 与 10MB 边界通过，真实 512×512 PNG 返回新 Profile ETag 和可读 512×512 Web JPEG，原始上传不保留
+      - 管理员彻底删除返回固定 PhotoDeleteResult 和强 ETag，相同 Idempotency-Key 重放正文与 Header 一致
+      - 删除后作者读取立即 404，photo_work 为 0，photo_tombstone 为 1
+      - 全新空库 V1～V16、定向 6/6、clean verify 53/53、健康 UP、40 Path/51 Operation 运行时 OpenAPI 均通过
+    required_next_action: Coordinator 核对实现/证据 Commit 与 Frontend 既有消费者后决定是否 CLOSED
   V1-BE-GAP-006:
     status: ready_for_coordinator_verification
     evidence:
@@ -301,7 +317,7 @@ blocking_gaps:
   - id: V1-BE-GAP-007
     priority: P1
     area: response_compatibility
-    summary: FE-V1-CONTRACT-003 的作者 Revision 与审核 Target 媒体 DTO 已补齐；管理员彻底删除返回类型、头像裁剪参数等其他消费者细节仍是本工作包未处理的 P1。
+    summary: 头像采用 Frontend 512×512 裁剪文件上传且不新增服务端裁剪参数；管理员删除 PhotoDeleteResult、ETag、幂等和立即撤权均已闭环，当前为 ready_for_coordinator_verification。
   - id: V1-BE-GAP-008
     priority: P2
     area: persistence
@@ -323,6 +339,6 @@ database_safety:
 
 handoff_conclusion:
   result: pass_with_findings
-  summary: V1-BE-GAP-006 已在 Commit 2502a0b 完成 StoragePort、补偿、对账、立即撤权和可恢复清理；全新空库 V1～V16 通过 50 个 clean verify 测试，并具备真实 HTTP、DB/文件/任务终态及 40 Path/51 Operation OpenAPI 证据。该 Finding 仅标为 ready_for_coordinator_verification；Backend 整体仍因本任务禁止处理的 V1-BE-GAP-005/007/008/009 及待回收项保持 development_incomplete。
-  required_next_action: Coordinator 应核对实现/证据 Commit 后决定 V1-BE-GAP-006 是否 CLOSED；V1-BE-GAP-004/005/007/008/009 状态不变，本任务未扩大范围。
-  detailed_evidence: /Users/yuanqi/2400px/app/handoff/evidence/v1-be-008-media-consistency-cleanup.md
+  summary: V1-BE-GAP-007 已在 Commit e18d0e6 闭环头像 512×512 上传、管理员彻底删除固定响应/ETag/幂等和实际外键删除顺序；全新空库 V1～V16 通过 53 个 clean verify 测试，并具备真实 HTTP 与 40 Path/51 Operation OpenAPI 证据。该 Finding 仅标为 ready_for_coordinator_verification；Backend 整体仍因 V1-BE-GAP-005/008/009 保持 development_incomplete。
+  required_next_action: Coordinator 应核对实现/证据 Commit 与 Frontend 既有消费者后决定 V1-BE-GAP-007 是否 CLOSED；Tester 正式测试仍需单独确认。
+  detailed_evidence: /Users/yuanqi/2400px/app/handoff/evidence/v1-be-009-avatar-delete-contract-verification.md
