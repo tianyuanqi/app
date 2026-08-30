@@ -1,7 +1,7 @@
 status: development_incomplete
 as_of: "2026-08-30"
 phase: v1_backend_development
-work_package: V1-BE-007
+work_package: V1-BE-008
 workflow_revision: WF-2026-08-28-02
 release: 2400px-v1.0
 requirements_baseline: v1.0-REQ-R4
@@ -10,8 +10,8 @@ human_gate_3: Passed
 repository:
   path: /Users/yuanqi/2400px/app
   branch: codex/v1-backend
-  source_commit: 26e30cead497f026685a30911b3be45129b4bdac
-  current_commit_before_handoff_update: 65d4a73
+  source_commit: 14ee6dcad407364c8ed616efa5b7e0eb9fd94922
+  current_commit_before_handoff_update: 2502a0b
   remote_modified: false
   pushed: false
   pull_request_created: false
@@ -31,10 +31,12 @@ environment:
   spring_boot: 3.5.16
   runtime_profile: local
   isolated_development_schema: px2400_v1_dev
-  isolated_targeted_schema: px2400_v1_be007_targeted_final_20260830
-  isolated_test_schema: px2400_v1_be007_verify_20260830
-  isolated_runtime_schema: px2400_v1_be007_runtime_20260830
-  flyway_schema_version: 15
+  isolated_targeted_schema: px2400_v1_be008_targeted_final2_20260830
+  isolated_test_schema: px2400_v1_be008_verify_20260830
+  isolated_runtime_schema: px2400_v1_be008_runtime_20260830
+  flyway_schema_version: 16
+  temporary_runtime_stopped: true
+  temporary_runtime_removed: true
 
 implementation_slices:
   - commit: 0df928f
@@ -65,24 +67,26 @@ implementation_slices:
     scope: 逐图 EXIF 候选、手工参数覆盖与清空、未来时间规则及 Asia/Shanghai 序列化
   - commit: 65d4a73
     scope: 逐图拍摄参数的稳定数组项、公开媒体 ID 与字段错误定位
+  - commit: 2502a0b
+    scope: StoragePort、跨 DB/文件补偿、双向对账、立即撤权、租约 Worker 与幂等清理
 
 runtime_contract:
-  authority: http://127.0.0.1:18087/v3/api-docs
-  evidence_file: /private/tmp/2400px-v1-be007-runtime-openapi.json
-  sha256: 531dbaa4fd0d4cb4af0baa4a785a74866b18c01fc209d65e9376d5f79d9ab92f
+  authority: http://127.0.0.1:18088/v3/api-docs
+  evidence_file: /private/tmp/2400px-v1-be008-runtime-openapi.json
+  sha256: 3aefdbcf51a1e3dea84d7c1f319ea28affca23440990297d98bf4dcebf5119bb
   bytes: 332290
   paths: 40
   operations: 51
   api_prefix: /api/v1
   response_envelope: "{code, message, data}"
   legacy_home_paths_present: false
-  note: 该文件是本机临时证据，不是已提交的静态契约；运行时输出仍以对应 Commit 启动后的 /v3/api-docs 为准。
+  note: 该文件已在记录哈希后随临时运行时安全移入系统废纸篓；40 Path/51 Operation、332290 bytes 与契约测试保持不变，哈希差异来自运行时 Server URL 端口变化，没有消费者业务契约变化。
 
 verification:
   clean_verify:
     command: ./mvnw clean verify
     result: passed
-    tests_run: 44
+    tests_run: 50
     failures: 0
     errors: 0
     skipped: 0
@@ -99,15 +103,16 @@ verification:
     - { suite: ExifTimeRulesIntegrationTest, count: 3, result: passed }
     - { suite: ExifErrorLocationIntegrationTest, count: 6, result: passed }
     - { suite: MediaProcessorIntegrationTest, count: 6, result: passed }
+    - { suite: MediaConsistencyCleanupIntegrationTest, count: 6, result: passed }
   fresh_database:
     result: passed
-    schema: px2400_v1_be007_verify_20260830
-    migrations: V1-V15
-    note: 该 Schema 从空状态一次性成功应用 V1～V15；早期定向测试的独立 Schema 因 HTTP 固定 Clock 令 JWT 相对墙钟过期而被弃用，没有在失败 Schema 上修改或复用数据库结构。
+    schema: px2400_v1_be008_verify_20260830
+    migrations: V1-V16
+    note: 该 Schema 从空状态一次性成功应用 V1～V16；首个 V16 诊断 Schema 因同条 ALTER 内同名 FK 重建失败后被弃用，最终定向、verify 与 runtime 均使用新空 Schema。
   runtime_startup:
     result: passed
-    schema: px2400_v1_be007_runtime_20260830
-    migrations_validated: 15
+    schema: px2400_v1_be008_runtime_20260830
+    migrations_validated: 16
   health_check:
     result: passed
     status: UP
@@ -139,6 +144,12 @@ integration_matrix:
   - { invariant: "逐图候选、手工覆盖与清空无跨媒体污染，未来手工拒绝且有效时间固定序列化为 +08:00", test: ExifTimeRulesIntegrationTest }
   - { invariant: 逐图业务与 Bean Validation 错误可稳定定位数组项、公开 mediaId 和字段且多错误不覆盖, test: ExifErrorLocationIntegrationTest }
   - { invariant: 未认证及普通用户先于资源和 ETag 校验失败, test: AdminContractSecurityTest }
+  - { invariant: 删除提交先 DELETE_PENDING 撤权，物理任务成功后显式清空 Storage Key 且重复执行稳定, test: MediaConsistencyCleanupIntegrationTest.删除先撤权再由幂等任务物理清理 }
+  - { invariant: StoragePort 暂时失败进入 RETRY，Clock 前进后成功，过期 RUNNING 租约可恢复, test: MediaConsistencyCleanupIntegrationTest.临时失败重试成功且过期RUNNING租约可恢复 }
+  - { invariant: 重试耗尽保留原因、次数、下次时间、错误分类与终态, test: MediaConsistencyCleanupIntegrationTest.重试耗尽进入可观察终态 }
+  - { invariant: 并发 Runner 只产生一次有效领取且终态幂等, test: MediaConsistencyCleanupIntegrationTest.并发Runner只领取一次且重复执行稳定 }
+  - { invariant: 双向对账识别无 DB 文件、缺文件、重复键和状态异常且不误删合法媒体, test: MediaConsistencyCleanupIntegrationTest.双向对账识别四类异常且不清理合法或新文件 }
+  - { invariant: 补偿删除失败持久排队且 ClientUploadId 不生成重复 Asset, test: MediaConsistencyCleanupIntegrationTest.校验失败的补偿删除失败会登记持久任务且不生成重复Asset }
 
 implemented_capabilities:
   authentication:
@@ -160,6 +171,10 @@ implemented_capabilities:
     - 作者可逐图覆盖或清空参数；未来 EXIF 只警告不写入有效拍摄时间，未来手工时间稳定拒绝
     - 有效拍摄时间按 Asia/Shanghai 比较并固定序列化为带 +08:00 偏移的 ISO-8601
     - 逐图参数校验通过既有 ErrorResult 返回零基数组路径、公开 mediaId 和稳定字段/条目错误代码
+    - StoragePort 覆盖暂存、移动、读写、删除与对象枚举，并支持测试故障注入
+    - 作者/管理员彻底删除、独立媒体删除与 Avatar 替换均先 DELETE_PENDING 立即撤权，再由持久任务幂等物理清理
+    - 双向对账识别无 DB 文件、DB 引用缺失、重复 Storage Key、状态异常和过期无引用媒体
+    - 清理任务具备原因、尝试次数、下次重试、24 小时 deadline、短租约恢复、错误分类和明确终态
   moderation:
     - 待审队列、目标详情、历史、批准、驳回、下架及恢复
     - 允许管理员自审并记录 selfReview
@@ -177,9 +192,18 @@ integration_readiness:
   backend_overall_ready: false
   frontend_can_integrate: true
   tester_can_accept: true
-  reason: FE-V1-CONTRACT-005 与 V1-BE-GAP-004 已达到可供 Frontend 验证，且既有 P0 保持回归通过；最终 CLOSED 需 Coordinator 回收最小 Frontend Regression，整体开发仍因明确保留的其他 P1/P2 未完成而不是 release-ready。
+  reason: V1-BE-GAP-006 已通过 50-test clean verify、空库 V16、故障/并发矩阵与真实 HTTP 立即撤权链路，达到可供 Coordinator 核验；既有 V1-BE-GAP-004 仍待 Frontend 最小回归，整体开发也因明确保留的其他 P1/P2 未完成而不是 release-ready。
 
 backend_findings:
+  V1-BE-GAP-006:
+    status: ready_for_coordinator_verification
+    evidence:
+      - StoragePort 与 V16 持久任务闭环上传/处理补偿、作者及管理员彻底删除、Avatar 替换和独立媒体删除
+      - 双向对账覆盖无 DB 文件、DB 引用缺失、重复键、状态异常与过期无引用媒体；新文件、合法私有、处理中和仍引用媒体不自动删除
+      - 可控 Clock 与故障 StoragePort 覆盖成功、暂时失败、重试成功、耗尽、重启租约恢复和并发重复执行
+      - 全新空库 V1～V16、50 个 clean verify 测试、健康检查、真实 HTTP 立即 404 和 40 Path/51 Operation 运行时 OpenAPI 均通过
+      - Runtime 清理终态为 OWNER_MEDIA_DELETE/attempt_count=1/DELETED，Asset DELETED、两个 Storage Key 为 NULL、文件计数 0、开放 Issue 0
+    required_next_action: Coordinator 核对实现/证据 Commit 与本文件后决定是否 CLOSED
   V1-BE-GAP-004:
     status: ready_for_frontend_verification
     evidence:
@@ -273,7 +297,7 @@ blocking_gaps:
   - id: V1-BE-GAP-006
     priority: P1
     area: media_cleanup
-    summary: FE-V1-RUNTIME-002 的有效 PNG 正常处理、失败分类与重试幂等已验证；孤儿对账、跨 DB/文件补偿和彻底清理证据仍是本工作包未处理的 P1。
+    summary: 已实现跨 DB/文件补偿、双向孤儿对账、DELETE_PENDING 立即撤权、幂等物理删除、24 小时/可观察重试、耗尽、租约恢复和并发防重复；当前为 ready_for_coordinator_verification，仅 Coordinator 可决定 CLOSED。
   - id: V1-BE-GAP-007
     priority: P1
     area: response_compatibility
@@ -293,9 +317,12 @@ database_safety:
   old_database_read: false
   failed_isolated_schema_modified_after_failure: false
   production_profile_sample_business_data_added: false
+  synthetic_runtime_sessions_revoked: true
+  private_media_local_touched: false
+  temporary_mysql_stopped_and_removed: true
 
 handoff_conclusion:
   result: pass_with_findings
-  summary: FE-V1-CONTRACT-005 已达到可供 Frontend 验证；Commit 65d4a73 在全新空库 V1～V15 上通过 44 个 clean verify 测试，并具备完整多错误定位、健康、真实 HTTP 与 40 Path/51 Operation 运行时 OpenAPI 证据。Backend 整体仍因本任务禁止处理的 V1-BE-GAP-005～009 保持 development_incomplete。
-  required_next_action: Coordinator 应派发最小 Frontend Regression 并回收证据后决定 FE-V1-CONTRACT-005 与 V1-BE-GAP-004 是否最终 CLOSED；V1-BE-GAP-005～009 状态不变，本任务未扩大其范围。
-  detailed_evidence: /Users/yuanqi/2400px/app/handoff/evidence/v1-be-007-exif-error-location.md
+  summary: V1-BE-GAP-006 已在 Commit 2502a0b 完成 StoragePort、补偿、对账、立即撤权和可恢复清理；全新空库 V1～V16 通过 50 个 clean verify 测试，并具备真实 HTTP、DB/文件/任务终态及 40 Path/51 Operation OpenAPI 证据。该 Finding 仅标为 ready_for_coordinator_verification；Backend 整体仍因本任务禁止处理的 V1-BE-GAP-005/007/008/009 及待回收项保持 development_incomplete。
+  required_next_action: Coordinator 应核对实现/证据 Commit 后决定 V1-BE-GAP-006 是否 CLOSED；V1-BE-GAP-004/005/007/008/009 状态不变，本任务未扩大范围。
+  detailed_evidence: /Users/yuanqi/2400px/app/handoff/evidence/v1-be-008-media-consistency-cleanup.md
