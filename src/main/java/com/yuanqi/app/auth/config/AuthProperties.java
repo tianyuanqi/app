@@ -9,23 +9,23 @@ import java.util.List;
 
 /**
  * 认证业务可配置项：锁定策略、限流与令牌时长。
- * <p>令牌时长优先读本配置；若未单独配置则回退到 app.jwt。</p>
+ * <p>Access Token 和 Session 时长由本配置提供，JWT 签名密钥取自 app.jwt。</p>
  */
 @Data
 @Component
 @ConfigurationProperties(prefix = "app.auth")
 public class AuthProperties {
 
-    /** 连续登录失败达到该次数后锁定账号 */
+    /** 当前 15 分钟失败窗口内达到该次数后锁定；登录成功会清空失败窗口。 */
     private int maxFailedLogin = 5;
 
     /** 锁定时长（分钟） */
     private int lockMinutes = 15;
 
-    /** 访问令牌固定 15 分钟，且不得超过 Session 剩余期限。 */
+    /** 访问令牌有效时长（毫秒），默认 15 分钟，签发时不得超过 Session 剩余期限。 */
     private long accessExpireMs = 900_000L;
 
-    /** Session 固定七天绝对期限。 */
+    /** Session 有效时长（毫秒），默认七天；签发后绝对期限不随刷新延长。 */
     private long sessionExpireMs = 604_800_000L;
 
     /** 精确允许的浏览器 Origin。 */

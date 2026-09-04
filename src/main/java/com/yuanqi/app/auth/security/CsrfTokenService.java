@@ -10,6 +10,7 @@ import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.util.Base64;
 
+/** 生成带 HMAC 的会话绑定 CSRF Token；请求头与 Cookie 的一致性由 Controller 校验。 */
 @Service
 public class CsrfTokenService {
     private final CryptoSupport crypto;
@@ -21,6 +22,7 @@ public class CsrfTokenService {
         this.clock = clock;
     }
 
+    /** 将公开会话标识、UTC 到期秒数和随机 nonce 签名，不在服务端保存 Token。 */
     public String issue(String sessionId, LocalDateTime expiresAt) {
         byte[] nonce = new byte[24];
         random.nextBytes(nonce);
@@ -30,6 +32,7 @@ public class CsrfTokenService {
                 + "." + crypto.hmac(payload);
     }
 
+    /** 校验会话绑定、签名及到期秒数；恰好到期或格式异常均返回 false，不查询会话状态。 */
     public boolean valid(String token, String sessionId) {
         if (token == null) {
             return false;

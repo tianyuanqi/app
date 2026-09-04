@@ -19,6 +19,7 @@ import java.util.Date;
 import java.util.Map;
 import java.util.UUID;
 
+/** 签发和解析 Access Token；服务端会话、账号归属与当前角色由认证过滤器复核。 */
 @Service
 public class JwtService {
     private final JwtProperties properties;
@@ -31,6 +32,7 @@ public class JwtService {
         this.clock = clock;
     }
 
+    /** 使用公开 uid 和 sid 签发令牌；有效期取配置毫秒时长与 UTC 会话剩余期限的较短者。 */
     public AccessToken createAccessToken(Account account, String sessionId, LocalDateTime sessionExpiresAt) {
         Instant issuedAt = clock.instant();
         Instant configuredExpiry = issuedAt.plusMillis(authProperties.getAccessExpireMs());
@@ -47,6 +49,10 @@ public class JwtService {
         return new AccessToken(token, expiresAt);
     }
 
+    /**
+     * 解析签名令牌；过期令牌保留声明并标记 expired，其他解析异常返回 null。
+     * 过期结果仅供过滤器决定错误优先级，不代表认证成功。
+     */
     public ParsedAccess parseAccess(String token) {
         try {
             Claims claims = Jwts.parser().verifyWith(signingKey()).build().parseSignedClaims(token).getPayload();

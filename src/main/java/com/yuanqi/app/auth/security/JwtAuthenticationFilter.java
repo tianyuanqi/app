@@ -24,7 +24,7 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 
-/** Access Token 仅携带公开 uid；账号、角色和 Session 状态始终从服务端复核。 */
+/** Access Token 携带公开 uid、sid 和角色快照；认证时复核服务端会话、账号归属及当前角色。 */
 @Component
 public class JwtAuthenticationFilter extends OncePerRequestFilter {
     private final JwtService jwtService;
@@ -55,6 +55,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                     writeError(response, ErrorCode.SESSION_INVALID);
                     return;
                 }
+                // 先报告会话失效或账号不可用，再判断 Access Token 过期，避免错误地提示客户端刷新。
                 AuthSession session = sessionService.findActiveSession(parsed.sessionId());
                 if (session == null) {
                     writeError(response, ErrorCode.SESSION_INVALID);
@@ -81,6 +82,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             }
             chain.doFilter(request, response);
         } finally {
+            // 无论下游成功还是抛异常，都清理请求线程上的身份，避免线程复用时残留。
             UserContext.remove();
             SecurityContextHolder.clearContext();
         }

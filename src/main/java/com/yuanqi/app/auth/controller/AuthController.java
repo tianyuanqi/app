@@ -27,6 +27,7 @@ import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+/** 认证 HTTP 入口：处理来源校验、会话 Cookie 与响应装配，业务状态交由 Service 管理。 */
 @Tag(name = "认证")
 @RestController
 @RequestMapping("/api/v1/auth")
@@ -80,6 +81,7 @@ public class AuthController {
         return ResponseEntity.ok(Result.success(issued.view()));
     }
 
+    /** 校验来源后执行密码登录；响应体提供 Access Token，刷新凭证通过 Cookie 写入。 */
     @Operation(summary = "邮箱密码登录")
     @PostMapping("/login")
     public ResponseEntity<Result<AuthViews.SessionView>> login(
@@ -91,6 +93,7 @@ public class AuthController {
         return ResponseEntity.ok(Result.success(issued.view()));
     }
 
+    /** 通过当前 refresh Cookie 恢复会话并重发 CSRF Cookie，不延长会话期限。 */
     @Operation(summary = "获取当前 Session 的 CSRF Token，不旋转 Refresh")
     @GetMapping("/csrf")
     public Result<AuthViews.CsrfView> csrf(HttpServletRequest http, HttpServletResponse response) {
@@ -103,6 +106,7 @@ public class AuthController {
                 resolved.session().getAbsoluteExpiresAt().atOffset(java.time.ZoneOffset.UTC)));
     }
 
+    /** 先解析会话并校验 CSRF，再旋转凭证；已旋转凭证会在解析阶段被拒绝。 */
     @Operation(summary = "旋转 Refresh 并签发新 Access Token")
     @PostMapping("/token/refresh")
     public Result<AuthViews.SessionView> refresh(HttpServletRequest http, HttpServletResponse response,
@@ -117,6 +121,7 @@ public class AuthController {
         return Result.success(issued.view());
     }
 
+    /** 有效会话须通过 CSRF 校验；缺失或解析为 SESSION_INVALID 的凭证仅清除 Cookie 并幂等成功。 */
     @Operation(summary = "退出当前 Session；无 Session 时幂等成功")
     @PostMapping("/logout")
     public Result<AuthViews.LogoutResult> logout(HttpServletRequest http, HttpServletResponse response,
@@ -145,6 +150,7 @@ public class AuthController {
     }
 
     private void requireCsrf(HttpServletRequest request, String header, String sessionId) {
+        // 双提交值相等还不够，签名、会话绑定和有效期也必须通过校验。
         String cookie = cookies.csrfCookie(request);
         if (header == null || cookie == null || !header.equals(cookie) || !csrfTokens.valid(header, sessionId)) {
             throw new BusinessException(ErrorCode.CSRF_INVALID);

@@ -14,6 +14,7 @@ import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.util.Arrays;
 
+/** 装配认证 Cookie：refresh 为 HttpOnly，CSRF 可由浏览器脚本读取并回传请求头。 */
 @Service
 public class AuthCookieService {
     public static final String REFRESH_COOKIE = "__Host-2400px_refresh";
@@ -28,6 +29,7 @@ public class AuthCookieService {
         this.clock = clock;
     }
 
+    /** 按 UTC 会话绝对期限计算 Cookie 剩余秒数；重新写入 Cookie 不延长服务端会话。 */
     public void set(HttpServletResponse response, String refresh, String csrf, LocalDateTime expiresAt) {
         long seconds = Math.max(0, expiresAt.toEpochSecond(ZoneOffset.UTC) - clock.instant().getEpochSecond());
         response.addHeader(HttpHeaders.SET_COOKIE, cookie(REFRESH_COOKIE, refresh, true, seconds).toString());
@@ -59,6 +61,7 @@ public class AuthCookieService {
     }
 
     private ResponseCookie cookie(String name, String value, boolean httpOnly, long seconds) {
+        // __Host- 前缀要求 Secure、Path=/ 且不设置 Domain；Secure 仍取决于配置，关闭时浏览器可能拒收。
         return ResponseCookie.from(name, value).httpOnly(httpOnly).secure(properties.isSecureCookies())
                 .sameSite("Lax").path("/").maxAge(Duration.ofSeconds(seconds)).build();
     }

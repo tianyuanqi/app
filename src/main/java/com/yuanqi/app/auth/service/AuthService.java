@@ -110,6 +110,10 @@ public class AuthService {
         return sessionService.issue(account);
     }
 
+    /**
+     * 使用归一化邮箱完成凭据校验后签发新会话。
+     * 此方法不声明事务，常规登录入口中失败计数事务与会话签发事务分别完成。
+     */
     public AuthSessionService.IssuedSession login(AuthRequests.Login request, String ip) {
         String emailKey = emailNormalizer.normalize(request.email());
         Account account = loginAttemptService.authenticate(emailKey, request.password(), ip);

@@ -19,7 +19,7 @@ import org.springframework.security.web.authentication.UsernamePasswordAuthentic
 import java.nio.charset.StandardCharsets;
 
 /**
- * Spring Security 配置：无状态 JWT，按方案 A 划分公开与需登录接口。
+ * 配置请求级鉴权；不使用 Servlet Session 保存登录态，持久化认证会话由业务层维护。
  */
 @Configuration
 @EnableWebSecurity
@@ -36,12 +36,13 @@ public class SecurityConfig {
     @Bean
     public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
         http
+                // 关闭框架 CSRF；认证 Cookie 入口的 Origin 与 CSRF 检查由 AuthController 显式执行。
                 .csrf(csrf -> csrf.disable())
                 .cors(Customizer.withDefaults())
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
-                        // 认证公开接口
+                        // 这些入口不要求 Access Token，但仍执行 Controller 校验；携带无效 Bearer 时过滤器会先拒绝。
                         .requestMatchers(
                                 "/api/v1/auth/csrf",
                                 "/api/v1/auth/verification-codes",
