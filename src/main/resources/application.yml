@@ -7,12 +7,10 @@ spring:
   servlet:
     multipart:
       max-file-size: 50MB
-      max-request-size: 100MB
+      max-request-size: 210MB
   flyway:
     enabled: true
-    # 已有库首次接入时自动 baseline，避免误当作空库执行建表失败
-    baseline-on-migrate: true
-    baseline-version: 0
+    baseline-on-migrate: false
     locations: classpath:db/migration
 
 server:
@@ -37,14 +35,15 @@ springdoc:
 app:
   jwt:
     secret: ${JWT_SECRET:Yuanqi_Photo_Secret_Key_2026_ChangeMe_32B}
-    access-expire-ms: ${JWT_ACCESS_EXPIRE_MS:1800000}
-    refresh-expire-ms: ${JWT_REFRESH_EXPIRE_MS:1209600000}
+    access-expire-ms: ${JWT_ACCESS_EXPIRE_MS:900000}
+    refresh-expire-ms: ${JWT_REFRESH_EXPIRE_MS:604800000}
   auth:
     max-failed-login: 5
     lock-minutes: 15
-    login-rate-limit-per-minute: 20
-    register-rate-limit-per-minute: 10
-    access-expire-ms: ${JWT_ACCESS_EXPIRE_MS:1800000}
-    refresh-expire-ms: ${JWT_REFRESH_EXPIRE_MS:1209600000}
+    access-expire-ms: ${JWT_ACCESS_EXPIRE_MS:900000}
+    session-expire-ms: ${AUTH_SESSION_EXPIRE_MS:604800000}
+    allowed-origins: ${APP_ALLOWED_ORIGINS:https://localhost:5173}
+    secure-cookies: ${APP_SECURE_COOKIES:true}
+    rate-limit-pepper: ${AUTH_RATE_LIMIT_PEPPER:change-this-rate-limit-pepper}
   upload:
-    dir: ${APP_UPLOAD_DIR:./uploads}
+    dir: ${APP_UPLOAD_DIR:./private-media}

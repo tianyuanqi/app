@@ -1,41 +1,28 @@
 package com.yuanqi.app.common.config;
 
+import com.yuanqi.app.auth.config.AuthProperties;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.web.servlet.config.annotation.CorsRegistry;
-import org.springframework.web.servlet.config.annotation.ResourceHandlerRegistry;
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 
-/**
- * Web MVC 配置：CORS 与上传静态资源映射。
- * <p>鉴权已交由 Spring Security JWT Filter，此处不再注册拦截器。</p>
- */
+/** 精确 Origin CORS；媒体只能经授权 Controller 读取，不暴露静态目录。 */
 @Configuration
 public class WebMvcConfig implements WebMvcConfigurer {
+    private final AuthProperties authProperties;
 
-    private final UploadProperties uploadProperties;
-
-    public WebMvcConfig(UploadProperties uploadProperties) {
-        this.uploadProperties = uploadProperties;
+    public WebMvcConfig(AuthProperties authProperties) {
+        this.authProperties = authProperties;
     }
 
     @Override
     public void addCorsMappings(CorsRegistry registry) {
         registry.addMapping("/**")
-                .allowedOriginPatterns("*")
+                .allowedOrigins(authProperties.getAllowedOrigins().toArray(String[]::new))
                 .allowedMethods("GET", "POST", "PUT", "DELETE", "OPTIONS")
-                .allowedHeaders("*")
+                .allowedHeaders("Authorization", "Content-Type", "X-CSRF-Token", "Idempotency-Key",
+                        "If-Match", "Accept")
+                .exposedHeaders("ETag", "Retry-After", "Location", "X-Trace-Id")
                 .allowCredentials(true)
                 .maxAge(3600);
-    }
-
-    @Override
-    public void addResourceHandlers(ResourceHandlerRegistry registry) {
-        String location = uploadProperties.getDir();
-        if (!location.endsWith("/") && !location.endsWith("\\")) {
-            location = location + "/";
-        }
-        // /uploads/** 映射到配置的物理目录
-        registry.addResourceHandler("/uploads/**")
-                .addResourceLocations("file:" + location);
     }
 }

@@ -1,86 +1,134 @@
 package com.yuanqi.app.common.exception;
 
 import com.yuanqi.app.common.api.ErrorCode;
-import com.yuanqi.app.common.api.Result;
+import com.yuanqi.app.common.api.ErrorResult;
+import com.yuanqi.app.common.context.TraceContext;
+import com.yuanqi.app.auth.service.VerificationException;
 import jakarta.validation.ConstraintViolationException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.security.access.AccessDeniedException;
-import org.springframework.security.authentication.AuthenticationCredentialsNotFoundException;
 import org.springframework.security.core.AuthenticationException;
 import org.springframework.validation.BindException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.multipart.MaxUploadSizeExceededException;
 import org.springframework.web.multipart.support.MissingServletRequestPartException;
+import org.springframework.web.servlet.resource.NoResourceFoundException;
 
-/**
- * 全局异常处理：保证 HTTP 状态码与业务码一致，并输出统一 Result 结构。
- */
+import java.util.List;
+import java.util.Comparator;
+import java.util.LinkedHashMap;
+import java.util.Map;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+import com.yuanqi.app.photo.dto.WorkRequests;
+
+/** 将所有 JSON 失败统一为 ErrorResult。 */
 @RestControllerAdvice
 public class GlobalExceptionHandler {
-
     private static final Logger log = LoggerFactory.getLogger(GlobalExceptionHandler.class);
+    private static final Pattern MEDIA_PARAMETER_PATH = Pattern.compile("^mediaParameters\\[(\\d+)](?:\\.parameters)?(?:\\..+)?$");
+
+    @ExceptionHandler(RequestValidationException.class)
+    public ResponseEntity<ErrorResult> handleStructuredValidation(RequestValidationException e) {
+        ErrorResult body = new ErrorResult(ErrorCode.VALIDATION_FAILED, e.getMessage(), false, null,
+                e.getFieldErrors(), e.getItemErrors(), null, null, TraceContext.current());
+        return ResponseEntity.badRequest().body(body);
+    }
 
     @ExceptionHandler(BusinessException.class)
-    public ResponseEntity<Result<Void>> handleBusiness(BusinessException e) {
-        ErrorCode errorCode = e.getErrorCode();
-        return ResponseEntity.status(errorCode.getHttpStatus())
-                .body(Result.fail(errorCode, e.getMessage()));
+    public ResponseEntity<ErrorResult> handleBusiness(BusinessException e) {
+        ErrorResult body = new ErrorResult(e.getErrorCode(), e.getMessage(), e.isRetryable(),
+                e.getRetryAfterSeconds(), List.of(), List.of(), null, null, TraceContext.current());
+        ResponseEntity.BodyBuilder builder = ResponseEntity.status(e.getErrorCode().getHttpStatus());
+        if (e.getRetryAfterSeconds() != null) {
+            builder.header(HttpHeaders.RETRY_AFTER, String.valueOf(e.getRetryAfterSeconds()));
+        }
+        return builder.body(body);
     }
 
-    @ExceptionHandler({
-            MethodArgumentNotValidException.class,
-            BindException.class,
-            ConstraintViolationException.class,
-            MissingServletRequestParameterException.class,
-            MissingServletRequestPartException.class,
-            HttpMessageNotReadableException.class,
-            IllegalArgumentException.class
-    })
-    public ResponseEntity<Result<Void>> handleBadRequest(Exception e) {
-        String message = resolveValidationMessage(e);
-        log.warn("参数校验失败: {}", message);
-        return ResponseEntity.status(ErrorCode.BAD_REQUEST.getHttpStatus())
-                .body(Result.fail(ErrorCode.BAD_REQUEST, message));
+    @ExceptionHandler(VerificationException.class)
+    public ResponseEntity<ErrorResult> handleVerification(VerificationException e) {
+        ErrorResult body = new ErrorResult(e.getErrorCode(), e.getMessage(), e.isRetryable(),
+                e.getRetryAfterSeconds(), List.of(), List.of(), null, e.getVerification(), TraceContext.current());
+        ResponseEntity.BodyBuilder builder = ResponseEntity.status(e.getErrorCode().getHttpStatus());
+        if (e.getRetryAfterSeconds() != null) {
+            builder.header(HttpHeaders.RETRY_AFTER, String.valueOf(e.getRetryAfterSeconds()));
+        }
+        return builder.body(body);
     }
 
-    @ExceptionHandler({AuthenticationException.class, AuthenticationCredentialsNotFoundException.class})
-    public ResponseEntity<Result<Void>> handleUnauthorized(Exception e) {
-        return ResponseEntity.status(ErrorCode.UNAUTHORIZED.getHttpStatus())
-                .body(Result.fail(ErrorCode.UNAUTHORIZED));
+    @ExceptionHandler(MethodArgumentNotValidException.class)
+    public ResponseEntity<ErrorResult> handleValidation(MethodArgumentNotValidException e) {
+        List<ErrorResult.FieldError> fields = e.getBindingResult().getFieldErrors().stream()
+                .sorted(Comparator.comparing(org.springframework.validation.FieldError::getField)
+                        .thenComparing(field -> String.valueOf(field.getCode())))
+                .map(field -> new ErrorResult.FieldError(field.getField(), "INVALID", field.getDefaultMessage()))
+                .toList();
+        List<ErrorResult.ItemError> items = itemErrors(fields, e.getBindingResult().getTarget());
+        ErrorResult body = new ErrorResult(ErrorCode.VALIDATION_FAILED,
+                ErrorCode.VALIDATION_FAILED.getMessage(), false, null, fields, items, null, null,
+                TraceContext.current());
+        return ResponseEntity.badRequest().body(body);
+    }
+
+    private List<ErrorResult.ItemError> itemErrors(List<ErrorResult.FieldError> fields, Object target) {
+        if (!(target instanceof WorkRequests.Draft draft) || draft.mediaParameters() == null) return List.of();
+        Map<Integer, ErrorResult.ItemError> errors = new LinkedHashMap<>();
+        for (ErrorResult.FieldError field : fields) {
+            Matcher matcher = MEDIA_PARAMETER_PATH.matcher(field.path());
+            if (!matcher.matches()) continue;
+            int index = Integer.parseInt(matcher.group(1));
+            String mediaId = index < draft.mediaParameters().size() && draft.mediaParameters().get(index) != null
+                    ? draft.mediaParameters().get(index).mediaId() : null;
+            errors.putIfAbsent(index, new ErrorResult.ItemError(null, mediaId, "INVALID_MEDIA_PARAMETERS",
+                    "该媒体包含无效拍摄参数", false));
+        }
+        return List.copyOf(errors.values());
+    }
+
+    @ExceptionHandler({BindException.class, ConstraintViolationException.class,
+            MissingServletRequestParameterException.class, MissingServletRequestPartException.class,
+            HttpMessageNotReadableException.class, IllegalArgumentException.class})
+    public ResponseEntity<ErrorResult> handleBadRequest(Exception e) {
+        return ResponseEntity.badRequest().body(ErrorResult.of(ErrorCode.VALIDATION_FAILED,
+                ErrorCode.VALIDATION_FAILED.getMessage()));
+    }
+
+    @ExceptionHandler(MaxUploadSizeExceededException.class)
+    public ResponseEntity<ErrorResult> handlePayloadTooLarge(MaxUploadSizeExceededException e) {
+        return ResponseEntity.status(ErrorCode.PAYLOAD_TOO_LARGE.getHttpStatus())
+                .body(ErrorResult.of(ErrorCode.PAYLOAD_TOO_LARGE, ErrorCode.PAYLOAD_TOO_LARGE.getMessage()));
+    }
+
+    @ExceptionHandler(NoResourceFoundException.class)
+    public ResponseEntity<ErrorResult> handleNoResource(NoResourceFoundException e) {
+        return ResponseEntity.status(ErrorCode.RESOURCE_NOT_FOUND.getHttpStatus())
+                .body(ErrorResult.of(ErrorCode.RESOURCE_NOT_FOUND, ErrorCode.RESOURCE_NOT_FOUND.getMessage()));
+    }
+
+    @ExceptionHandler(AuthenticationException.class)
+    public ResponseEntity<ErrorResult> handleUnauthorized(AuthenticationException e) {
+        return ResponseEntity.status(ErrorCode.AUTH_REQUIRED.getHttpStatus())
+                .body(ErrorResult.of(ErrorCode.AUTH_REQUIRED, ErrorCode.AUTH_REQUIRED.getMessage()));
     }
 
     @ExceptionHandler(AccessDeniedException.class)
-    public ResponseEntity<Result<Void>> handleForbidden(AccessDeniedException e) {
+    public ResponseEntity<ErrorResult> handleForbidden(AccessDeniedException e) {
         return ResponseEntity.status(ErrorCode.FORBIDDEN.getHttpStatus())
-                .body(Result.fail(ErrorCode.FORBIDDEN));
+                .body(ErrorResult.of(ErrorCode.FORBIDDEN, ErrorCode.FORBIDDEN.getMessage()));
     }
 
     @ExceptionHandler(Exception.class)
-    public ResponseEntity<Result<Void>> handleUnknown(Exception e) {
-        log.error("系统发生未知异常", e);
+    public ResponseEntity<ErrorResult> handleUnknown(Exception e) {
+        log.error("未预期服务异常，traceId={}", TraceContext.current(), e);
         return ResponseEntity.status(ErrorCode.INTERNAL_ERROR.getHttpStatus())
-                .body(Result.fail(ErrorCode.INTERNAL_ERROR));
-    }
-
-    /** 从各类校验异常中提取可读中文提示 */
-    private String resolveValidationMessage(Exception e) {
-        if (e instanceof MethodArgumentNotValidException manv && manv.getBindingResult().getFieldError() != null) {
-            return manv.getBindingResult().getFieldError().getDefaultMessage();
-        }
-        if (e instanceof BindException be && be.getBindingResult().getFieldError() != null) {
-            return be.getBindingResult().getFieldError().getDefaultMessage();
-        }
-        if (e instanceof ConstraintViolationException cve && !cve.getConstraintViolations().isEmpty()) {
-            return cve.getConstraintViolations().iterator().next().getMessage();
-        }
-        if (e.getMessage() != null && !e.getMessage().isBlank()) {
-            return e.getMessage();
-        }
-        return ErrorCode.BAD_REQUEST.getMessage();
+                .body(ErrorResult.of(ErrorCode.INTERNAL_ERROR, ErrorCode.INTERNAL_ERROR.getMessage()));
     }
 }

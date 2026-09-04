@@ -1,180 +1,268 @@
 package com.yuanqi.app.auth.service;
 
-import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.yuanqi.app.auth.config.AuthProperties;
+import com.yuanqi.app.auth.entity.Account;
 import com.yuanqi.app.auth.entity.AuthSession;
+import com.yuanqi.app.auth.entity.RefreshCredential;
+import com.yuanqi.app.auth.mapper.AccountMapper;
 import com.yuanqi.app.auth.mapper.AuthSessionMapper;
-import com.yuanqi.app.auth.vo.LoginVO;
+import com.yuanqi.app.auth.mapper.RefreshCredentialMapper;
+import com.yuanqi.app.auth.security.AuthCookieService;
+import com.yuanqi.app.auth.security.CsrfTokenService;
+import com.yuanqi.app.auth.support.CryptoSupport;
+import com.yuanqi.app.auth.support.PublicIdGenerator;
+import com.yuanqi.app.auth.vo.AuthViews;
 import com.yuanqi.app.common.api.ErrorCode;
 import com.yuanqi.app.common.exception.BusinessException;
-import com.yuanqi.app.user.entity.User;
-import io.jsonwebtoken.Claims;
+import com.yuanqi.app.user.entity.UserProfile;
+import com.yuanqi.app.user.mapper.UserProfileMapper;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
+import java.security.SecureRandom;
+import java.time.Clock;
 import java.time.LocalDateTime;
-import java.util.HexFormat;
+import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
+import java.util.Base64;
 
-/**
- * 认证会话服务：签发、旋转、吊销 refresh 会话。
- */
+/** 管理持久化会话与刷新凭证；内部 LocalDateTime 统一按 UTC 解释，刷新不延长绝对期限。 */
 @Service
 public class AuthSessionService {
-
-    private final AuthSessionMapper authSessionMapper;
+    private final AuthSessionMapper sessionMapper;
+    private final RefreshCredentialMapper credentialMapper;
+    private final AccountMapper accountMapper;
+    private final UserProfileMapper profileMapper;
     private final JwtService jwtService;
-    private final AuthProperties authProperties;
-    private final AuthAuditService authAuditService;
+    private final CsrfTokenService csrfTokenService;
+    private final CryptoSupport crypto;
+    private final PublicIdGenerator idGenerator;
+    private final AuthProperties properties;
+    private final Clock clock;
+    private final SecureRandom random = new SecureRandom();
 
-    public AuthSessionService(AuthSessionMapper authSessionMapper,
+    public AuthSessionService(AuthSessionMapper sessionMapper,
+                              RefreshCredentialMapper credentialMapper,
+                              AccountMapper accountMapper,
+                              UserProfileMapper profileMapper,
                               JwtService jwtService,
-                              AuthProperties authProperties,
-                              AuthAuditService authAuditService) {
-        this.authSessionMapper = authSessionMapper;
+                              CsrfTokenService csrfTokenService,
+                              CryptoSupport crypto,
+                              PublicIdGenerator idGenerator,
+                              AuthProperties properties,
+                              Clock clock) {
+        this.sessionMapper = sessionMapper;
+        this.credentialMapper = credentialMapper;
+        this.accountMapper = accountMapper;
+        this.profileMapper = profileMapper;
         this.jwtService = jwtService;
-        this.authProperties = authProperties;
-        this.authAuditService = authAuditService;
+        this.csrfTokenService = csrfTokenService;
+        this.crypto = crypto;
+        this.idGenerator = idGenerator;
+        this.properties = properties;
+        this.clock = clock;
     }
 
-    /**
-     * 为用户创建新会话并签发双令牌。
-     */
-    @Transactional(rollbackFor = Exception.class)
-    public LoginVO issueTokenPair(User user, String ip, String userAgent) {
-        String jti = jwtService.newJti();
-        String refreshToken = jwtService.createRefreshToken(user, jti);
-        String accessToken = jwtService.createAccessToken(user);
-
+    /** 为调用方已认证的账号创建独立会话及首个刷新凭证，不吊销该账号的其他会话。 */
+    @Transactional
+    public IssuedSession issue(Account account) {
+        LocalDateTime now = now();
         AuthSession session = new AuthSession();
-        session.setUserId(user.getId());
-        session.setJti(jti);
-        session.setTokenHash(sha256(refreshToken));
-        session.setExpiresAt(LocalDateTime.now().plusSeconds(authProperties.getRefreshExpireMs() / 1000L));
-        session.setIp(ip);
-        session.setUserAgent(userAgent);
-        session.setCreatedAt(LocalDateTime.now());
-        authSessionMapper.insert(session);
-
-        return toLoginVO(user, accessToken, refreshToken);
+        session.setSessionId(idGenerator.next());
+        session.setAccountId(account.getId());
+        session.setStatus("ACTIVE");
+        session.setLoginAt(now);
+        session.setAbsoluteExpiresAt(now.plusNanos(properties.getSessionExpireMs() * 1_000_000));
+        session.setRowVersion(0L);
+        sessionMapper.insert(session);
+        String rawRefresh = newCredential(session, null, 0);
+        return result(account, session, rawRefresh);
     }
 
     /**
-     * 使用 refresh 旋转会话：旧会话吊销，签发新对令牌。
-     * <p>若检测到已旋转令牌被再次使用，则吊销该用户全部会话。</p>
+     * 锁定刷新凭证后锁定所属会话，消费旧凭证并建立下一代凭证。
+     * 直接调用本方法遇到已旋转凭证时会吊销会话；HTTP 入口还受前置 resolve 校验限制。
+     * BusinessException 不回滚，保留重放、过期或账号异常引起的状态更新。
      */
-    @Transactional(rollbackFor = Exception.class)
-    public LoginVO rotateRefreshToken(String refreshToken, User user, String ip, String userAgent) {
-        Claims claims = jwtService.parseRefreshClaims(refreshToken);
-        if (claims == null) {
-            throw new BusinessException(ErrorCode.AUTH_REFRESH_INVALID);
-        }
-        String jti = jwtService.readJti(claims);
-        Long tokenUserId = jwtService.readUserId(claims);
-        if (jti == null || tokenUserId == null || !tokenUserId.equals(user.getId())) {
-            throw new BusinessException(ErrorCode.AUTH_REFRESH_INVALID);
-        }
-
-        AuthSession session = authSessionMapper.selectOne(new LambdaQueryWrapper<AuthSession>()
-                .eq(AuthSession::getJti, jti));
+    @Transactional(noRollbackFor = BusinessException.class)
+    public IssuedSession rotate(String rawRefresh) {
+        RefreshCredential credential = requireCredential(rawRefresh);
+        AuthSession session = sessionMapper.selectById(credential.getSessionId());
         if (session == null) {
-            throw new BusinessException(ErrorCode.AUTH_REFRESH_INVALID);
+            throw new BusinessException(ErrorCode.SESSION_INVALID);
         }
-
-        // 已吊销且存在替换 jti → 判定 refresh 复用（疑似令牌被盗）
-        if (session.getRevokedAt() != null && session.getReplacedByJti() != null) {
-            revokeAllSessions(user.getId());
-            authAuditService.record(user.getId(), AuthAuditService.REFRESH_REUSE, false,
-                    ip, userAgent, "检测到 refresh 复用，已吊销全部会话");
-            throw new BusinessException(ErrorCode.AUTH_REFRESH_REUSE);
+        session = sessionMapper.findBySessionIdForUpdate(session.getSessionId());
+        if ("ROTATED".equals(credential.getStatus()) || "REUSED".equals(credential.getStatus())) {
+            credential.setStatus("REUSED");
+            credentialMapper.updateById(credential);
+            revoke(session, "REFRESH_REUSED");
+            throw new BusinessException(ErrorCode.REFRESH_REUSED);
         }
-
-        if (session.getRevokedAt() != null
-                || session.getExpiresAt().isBefore(LocalDateTime.now())
-                || !sha256(refreshToken).equals(session.getTokenHash())) {
-            throw new BusinessException(ErrorCode.AUTH_REFRESH_INVALID);
+        validateActive(session, credential);
+        Account account = accountMapper.selectById(session.getAccountId());
+        if (account == null) {
+            revoke(session, "ACCOUNT_MISSING");
+            throw new BusinessException(ErrorCode.SESSION_INVALID);
         }
-
-        String newJti = jwtService.newJti();
-        String newRefresh = jwtService.createRefreshToken(user, newJti);
-        String newAccess = jwtService.createAccessToken(user);
-
-        // 吊销旧会话并记录被谁替换
-        session.setRevokedAt(LocalDateTime.now());
-        session.setReplacedByJti(newJti);
-        authSessionMapper.updateById(session);
-
-        AuthSession newSession = new AuthSession();
-        newSession.setUserId(user.getId());
-        newSession.setJti(newJti);
-        newSession.setTokenHash(sha256(newRefresh));
-        newSession.setExpiresAt(LocalDateTime.now().plusSeconds(authProperties.getRefreshExpireMs() / 1000L));
-        newSession.setIp(ip);
-        newSession.setUserAgent(userAgent);
-        newSession.setCreatedAt(LocalDateTime.now());
-        authSessionMapper.insert(newSession);
-
-        return toLoginVO(user, newAccess, newRefresh);
+        if ("DISABLED".equals(account.getGovernanceStatus())) {
+            revoke(session, "ACCOUNT_DISABLED");
+            throw new BusinessException(ErrorCode.ACCOUNT_UNAVAILABLE);
+        }
+        credential.setStatus("ROTATED");
+        credential.setUsedAt(now());
+        credentialMapper.updateById(credential);
+        String next = newCredential(session, credential.getId(), credential.getRotationNo() + 1);
+        return result(account, session, next);
     }
 
     /**
-     * 退出登录：吊销当前 refresh 对应会话。
+     * 供 CSRF 获取、刷新和注销做只读前置校验，不加行锁、不旋转或吊销凭证。
+     * 检查凭证 ACTIVE、会话状态及绝对期限和账号状态，不单独检查凭证 expiresAt。
+     * 已旋转凭证在这里返回 SESSION_INVALID，不进入 rotate 的重放处理。
      */
-    @Transactional(rollbackFor = Exception.class)
-    public void revokeByRefreshToken(String refreshToken) {
-        Claims claims = jwtService.parseRefreshClaims(refreshToken);
-        if (claims == null) {
-            throw new BusinessException(ErrorCode.AUTH_REFRESH_INVALID);
+    @Transactional(readOnly = true)
+    public ResolvedSession resolve(String rawRefresh) {
+        if (rawRefresh == null || rawRefresh.isBlank()) {
+            throw new BusinessException(ErrorCode.SESSION_INVALID);
         }
-        String jti = jwtService.readJti(claims);
-        AuthSession session = authSessionMapper.selectOne(new LambdaQueryWrapper<AuthSession>()
-                .eq(AuthSession::getJti, jti));
-        if (session == null || session.getRevokedAt() != null) {
-            // 幂等：会话已不存在或已吊销，视为退出成功
-            return;
+        RefreshCredential credential = credentialMapper.findByHash(crypto.sha256(rawRefresh));
+        if (credential == null || !"ACTIVE".equals(credential.getStatus())) {
+            throw new BusinessException(ErrorCode.SESSION_INVALID);
         }
-        if (!sha256(refreshToken).equals(session.getTokenHash())) {
-            throw new BusinessException(ErrorCode.AUTH_REFRESH_INVALID);
+        AuthSession session = sessionMapper.selectById(credential.getSessionId());
+        if (session == null || !"ACTIVE".equals(session.getStatus()) || !session.getAbsoluteExpiresAt().isAfter(now())) {
+            throw new BusinessException(ErrorCode.SESSION_INVALID);
         }
-        session.setRevokedAt(LocalDateTime.now());
-        authSessionMapper.updateById(session);
+        Account account = accountMapper.selectById(session.getAccountId());
+        if (account == null) {
+            throw new BusinessException(ErrorCode.SESSION_INVALID);
+        }
+        if ("DISABLED".equals(account.getGovernanceStatus())) {
+            throw new BusinessException(ErrorCode.ACCOUNT_UNAVAILABLE);
+        }
+        return new ResolvedSession(account, session);
     }
 
-    /** 吊销指定用户的全部有效会话（改密、复用攻击时使用） */
-    @Transactional(rollbackFor = Exception.class)
-    public void revokeAllSessions(Long userId) {
-        authSessionMapper.update(null, new LambdaUpdateWrapper<AuthSession>()
-                .eq(AuthSession::getUserId, userId)
-                .isNull(AuthSession::getRevokedAt)
-                .set(AuthSession::getRevokedAt, LocalDateTime.now()));
-    }
-
-    private LoginVO toLoginVO(User user, String accessToken, String refreshToken) {
-        LoginVO vo = new LoginVO();
-        vo.setToken(accessToken);
-        vo.setAccessToken(accessToken);
-        vo.setRefreshToken(refreshToken);
-        vo.setTokenType("Bearer");
-        vo.setExpiresIn(jwtService.accessExpireSeconds());
-        // uid 为主；userId 暂留兼容旧客户端
-        vo.setUid(user.getUid());
-        vo.setUserId(user.getId());
-        vo.setUsername(user.getUsername());
-        vo.setRole(user.getRole());
-        vo.setAccountStatus(user.getAccountStatus());
-        return vo;
-    }
-
-    /** 计算 refresh 原文哈希，避免会话表存明文令牌 */
-    private String sha256(String raw) {
-        try {
-            MessageDigest digest = MessageDigest.getInstance("SHA-256");
-            byte[] hashed = digest.digest(raw.getBytes(StandardCharsets.UTF_8));
-            return HexFormat.of().formatHex(hashed);
-        } catch (Exception e) {
-            throw new IllegalStateException("计算令牌哈希失败", e);
+    /**
+     * 吊销凭证所属会话；返回 true 表示无需再次吊销，false 表示本次执行了注销。
+     * 直接传入已旋转凭证且所属会话仍有效时，记录重放并抛出业务异常，保留吊销结果。
+     */
+    @Transactional(noRollbackFor = BusinessException.class)
+    public boolean logout(String rawRefresh) {
+        if (rawRefresh == null || rawRefresh.isBlank()) {
+            return true;
         }
+        RefreshCredential credential = credentialMapper.findByHashForUpdate(crypto.sha256(rawRefresh));
+        if (credential == null || "REVOKED".equals(credential.getStatus()) || "EXPIRED".equals(credential.getStatus())) {
+            return true;
+        }
+        AuthSession session = sessionMapper.selectById(credential.getSessionId());
+        if (session == null || !"ACTIVE".equals(session.getStatus())) {
+            return true;
+        }
+        session = sessionMapper.findBySessionIdForUpdate(session.getSessionId());
+        if ("ROTATED".equals(credential.getStatus()) || "REUSED".equals(credential.getStatus())) {
+            credential.setStatus("REUSED");
+            credentialMapper.updateById(credential);
+            revoke(session, "REFRESH_REUSED");
+            throw new BusinessException(ErrorCode.REFRESH_REUSED);
+        }
+        revoke(session, "LOGOUT");
+        return false;
+    }
+
+    /** 批量吊销账号的 ACTIVE 会话；不改写刷新凭证行，后续认证通过会话状态拒绝访问。 */
+    @Transactional
+    public void revokeAll(Long accountId, String reason) {
+        sessionMapper.update(null, new LambdaUpdateWrapper<AuthSession>()
+                .eq(AuthSession::getAccountId, accountId).eq(AuthSession::getStatus, "ACTIVE")
+                .set(AuthSession::getStatus, "REVOKED").set(AuthSession::getRevokedAt, now())
+                .set(AuthSession::getRevokeReason, reason).setSql("row_version=row_version+1"));
+    }
+
+    /** 按公开会话标识查询；会话须为 ACTIVE 且绝对期限严格晚于当前时间，账号状态由调用方复核。 */
+    public AuthSession findActiveSession(String sessionId) {
+        AuthSession session = sessionMapper.findBySessionId(sessionId);
+        return session != null && "ACTIVE".equals(session.getStatus()) && session.getAbsoluteExpiresAt().isAfter(now())
+                ? session : null;
+    }
+
+    private RefreshCredential requireCredential(String raw) {
+        if (raw == null || raw.isBlank()) {
+            throw new BusinessException(ErrorCode.SESSION_INVALID);
+        }
+        RefreshCredential credential = credentialMapper.findByHashForUpdate(crypto.sha256(raw));
+        if (credential == null) {
+            throw new BusinessException(ErrorCode.SESSION_INVALID);
+        }
+        return credential;
+    }
+
+    private void validateActive(AuthSession session, RefreshCredential credential) {
+        LocalDateTime now = now();
+        if (!"ACTIVE".equals(session.getStatus()) || !"ACTIVE".equals(credential.getStatus())
+                || !session.getAbsoluteExpiresAt().isAfter(now) || !credential.getExpiresAt().isAfter(now)) {
+            if ("ACTIVE".equals(session.getStatus())) {
+                revoke(session, "EXPIRED");
+            }
+            throw new BusinessException(ErrorCode.SESSION_INVALID);
+        }
+    }
+
+    private String newCredential(AuthSession session, Long parentId, int rotation) {
+        // 数据库仅保存随机凭证的哈希；各代凭证沿用会话绝对期限，原文只返回给调用方写 Cookie。
+        byte[] bytes = new byte[32];
+        random.nextBytes(bytes);
+        String raw = Base64.getUrlEncoder().withoutPadding().encodeToString(bytes);
+        RefreshCredential credential = new RefreshCredential();
+        credential.setTokenId(idGenerator.next());
+        credential.setSessionId(session.getId());
+        credential.setTokenHash(crypto.sha256(raw));
+        credential.setRotationNo(rotation);
+        credential.setParentTokenId(parentId);
+        credential.setStatus("ACTIVE");
+        credential.setIssuedAt(now());
+        credential.setExpiresAt(session.getAbsoluteExpiresAt());
+        credentialMapper.insert(credential);
+        return raw;
+    }
+
+    private IssuedSession result(Account account, AuthSession session, String rawRefresh) {
+        UserProfile profile = profileMapper.selectById(account.getId());
+        JwtService.AccessToken access = jwtService.createAccessToken(account, session.getSessionId(),
+                session.getAbsoluteExpiresAt());
+        String csrf = csrfTokenService.issue(session.getSessionId(), session.getAbsoluteExpiresAt());
+        AuthViews.CsrfView csrfView = new AuthViews.CsrfView(AuthCookieService.CSRF_COOKIE,
+                AuthCookieService.CSRF_HEADER, utc(session.getAbsoluteExpiresAt()));
+        AuthViews.CurrentIdentity identity = new AuthViews.CurrentIdentity(account.getUid(),
+                profile == null ? null : profile.getUsername(), null, account.getRole());
+        AuthViews.SessionView view = new AuthViews.SessionView(access.value(), "Bearer",
+                access.expiresAt().atOffset(ZoneOffset.UTC), utc(session.getAbsoluteExpiresAt()), identity, csrfView);
+        return new IssuedSession(view, rawRefresh, csrf, session.getAbsoluteExpiresAt());
+    }
+
+    private void revoke(AuthSession session, String reason) {
+        session.setStatus("REVOKED");
+        session.setRevokedAt(now());
+        session.setRevokeReason(reason);
+        session.setRowVersion(session.getRowVersion() + 1);
+        sessionMapper.updateById(session);
+    }
+
+    private LocalDateTime now() {
+        return LocalDateTime.ofInstant(clock.instant(), ZoneOffset.UTC);
+    }
+
+    private OffsetDateTime utc(LocalDateTime value) {
+        return value.atOffset(ZoneOffset.UTC);
+    }
+
+    /** HTTP 装配用内部结果；refreshCredential 原文不得写入日志，expiresAt 为 UTC 会话绝对期限。 */
+    public record IssuedSession(AuthViews.SessionView view, String refreshCredential, String csrfToken,
+                                LocalDateTime expiresAt) {
+    }
+
+    public record ResolvedSession(Account account, AuthSession session) {
     }
 }

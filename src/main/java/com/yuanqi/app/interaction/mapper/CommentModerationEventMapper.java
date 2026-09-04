@@ -1,0 +1,1 @@
+package com.yuanqi.app.interaction.mapper;import com.baomidou.mybatisplus.core.mapper.BaseMapper;import com.yuanqi.app.interaction.entity.CommentModerationEvent;import org.apache.ibatis.annotations.Mapper;@Mapper public interface CommentModerationEventMapper extends BaseMapper<CommentModerationEvent>{}

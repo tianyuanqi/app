@@ -77,8 +77,7 @@ public class HomeService {
         if (publishedIds.isEmpty()) {
             return List.of();
         }
-        List<PhotoTagRelation> relations = photoTagRelationMapper.selectList(new LambdaQueryWrapper<PhotoTagRelation>()
-                .in(PhotoTagRelation::getPhotoId, publishedIds));
+        List<PhotoTagRelation> relations = photoTagRelationMapper.listByPhotoIds(publishedIds);
         Map<Long, Long> countByTag = relations.stream()
                 .collect(Collectors.groupingBy(PhotoTagRelation::getTagId, Collectors.counting()));
         if (countByTag.isEmpty()) {

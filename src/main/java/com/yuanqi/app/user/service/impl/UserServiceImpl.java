@@ -63,7 +63,7 @@ public class UserServiceImpl implements UserService {
         String email = normalizeEmail(request.getEmail());
         if (email != null && userMapper.exists(new LambdaQueryWrapper<User>()
                 .eq(User::getEmail, email).ne(User::getId, userId))) {
-            throw new BusinessException(ErrorCode.AUTH_EMAIL_EXISTS);
+            throw new BusinessException(ErrorCode.EMAIL_ALREADY_REGISTERED);
         }
         if (email != null) {
             user.setEmail(email);
@@ -73,7 +73,7 @@ public class UserServiceImpl implements UserService {
         }
         if (request.getGender() != null) {
             if (request.getGender() < 0 || request.getGender() > 2) {
-                throw new BusinessException(ErrorCode.BAD_REQUEST, "性别参数只能为0、1或2");
+                throw new BusinessException(ErrorCode.VALIDATION_FAILED, "性别参数只能为0、1或2");
             }
             user.setGender(request.getGender());
         }
@@ -92,7 +92,7 @@ public class UserServiceImpl implements UserService {
     public UserProfileVO getPublicProfile(String uid) {
         User user = userMapper.selectOne(new LambdaQueryWrapper<User>().eq(User::getUid, uid));
         if (user == null) {
-            throw new BusinessException(ErrorCode.NOT_FOUND, "用户不存在");
+            throw new BusinessException(ErrorCode.RESOURCE_NOT_FOUND, "用户不存在");
         }
         long photoCount = photoInfoMapper.selectCount(new LambdaQueryWrapper<PhotoInfo>()
                 .eq(PhotoInfo::getUserId, user.getId())
@@ -117,11 +117,11 @@ public class UserServiceImpl implements UserService {
     public void changePassword(Long userId, UserRequests.ChangePassword request) {
         User user = requireUser(userId);
         if (!passwordEncoder.matches(request.getOldPassword(), user.getPassword())) {
-            throw new BusinessException(ErrorCode.BAD_REQUEST, "原密码错误");
+            throw new BusinessException(ErrorCode.VALIDATION_FAILED, "原密码错误");
         }
         AuthPolicy.validatePassword(request.getNewPassword());
         if (passwordEncoder.matches(request.getNewPassword(), user.getPassword())) {
-            throw new BusinessException(ErrorCode.BAD_REQUEST, "新密码不能与原密码相同");
+            throw new BusinessException(ErrorCode.VALIDATION_FAILED, "新密码不能与原密码相同");
         }
         user.setPassword(passwordEncoder.encode(request.getNewPassword()));
         user.setPasswordChangedAt(LocalDateTime.now());
@@ -138,7 +138,7 @@ public class UserServiceImpl implements UserService {
     private User requireUser(Long userId) {
         User user = userId == null ? null : userMapper.selectById(userId);
         if (user == null) {
-            throw new BusinessException(ErrorCode.NOT_FOUND, "用户不存在");
+            throw new BusinessException(ErrorCode.RESOURCE_NOT_FOUND, "用户不存在");
         }
         return user;
     }

@@ -2,7 +2,7 @@ package com.yuanqi.app.auth.security;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.yuanqi.app.common.api.ErrorCode;
-import com.yuanqi.app.common.api.Result;
+import com.yuanqi.app.common.api.ErrorResult;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
@@ -19,7 +19,7 @@ import org.springframework.security.web.authentication.UsernamePasswordAuthentic
 import java.nio.charset.StandardCharsets;
 
 /**
- * Spring Security 配置：无状态 JWT，按方案 A 划分公开与需登录接口。
+ * 配置请求级鉴权；不使用 Servlet Session 保存登录态，持久化认证会话由业务层维护。
  */
 @Configuration
 @EnableWebSecurity
@@ -36,16 +36,20 @@ public class SecurityConfig {
     @Bean
     public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
         http
+                // 关闭框架 CSRF；认证 Cookie 入口的 Origin 与 CSRF 检查由 AuthController 显式执行。
                 .csrf(csrf -> csrf.disable())
                 .cors(Customizer.withDefaults())
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
-                        // 认证公开接口
+                        // 这些入口不要求 Access Token，但仍执行 Controller 校验；携带无效 Bearer 时过滤器会先拒绝。
                         .requestMatchers(
+                                "/api/v1/auth/csrf",
+                                "/api/v1/auth/verification-codes",
                                 "/api/v1/auth/login",
                                 "/api/v1/auth/register",
-                                "/api/v1/auth/token/refresh"
+                                "/api/v1/auth/token/refresh",
+                                "/api/v1/auth/logout"
                         ).permitAll()
                         // 用户资料：me 需登录，公开主页可读
                         .requestMatchers(HttpMethod.GET, "/api/v1/users/me", "/api/v1/users/me/**").authenticated()
@@ -57,14 +61,15 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.GET, "/api/v1/photos/mine", "/api/v1/photos/my-list").authenticated()
                         .requestMatchers(HttpMethod.POST, "/api/v1/photos/*/submit").authenticated()
                         .requestMatchers(HttpMethod.GET, "/api/v1/photos", "/api/v1/photos/list", "/api/v1/photos/*").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/v1/photos/*/comments", "/api/v1/photos/*/comments/*/replies").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/v1/media/*/web").permitAll()
                         .requestMatchers(HttpMethod.POST, "/api/v1/photos", "/api/v1/photos/upload").authenticated()
                         .requestMatchers(HttpMethod.PUT, "/api/v1/photos/**").authenticated()
                         .requestMatchers(HttpMethod.DELETE, "/api/v1/photos/**").authenticated()
                         // 审核：仅登录后由服务层校验 ADMIN
-                        .requestMatchers("/api/v1/moderation/**").authenticated()
+                        .requestMatchers("/api/v1/admin/**", "/api/v1/moderation/**").hasRole("ADMIN")
                         // 分类、静态资源、文档与健康检查
                         .requestMatchers("/api/v1/categories", "/api/v1/categories/**").permitAll()
-                        .requestMatchers("/uploads/**").permitAll()
                         .requestMatchers(
                                 "/v3/api-docs/**",
                                 "/swagger-ui/**",
@@ -75,16 +80,18 @@ public class SecurityConfig {
                 )
                 .exceptionHandling(ex -> ex
                         .authenticationEntryPoint((request, response, authException) -> {
-                            response.setStatus(ErrorCode.UNAUTHORIZED.getHttpStatus().value());
+                            response.setStatus(ErrorCode.AUTH_REQUIRED.getHttpStatus().value());
                             response.setCharacterEncoding(StandardCharsets.UTF_8.name());
                             response.setContentType(MediaType.APPLICATION_JSON_VALUE);
-                            objectMapper.writeValue(response.getWriter(), Result.fail(ErrorCode.UNAUTHORIZED));
+                            objectMapper.writeValue(response.getWriter(), ErrorResult.of(
+                                    ErrorCode.AUTH_REQUIRED, ErrorCode.AUTH_REQUIRED.getMessage()));
                         })
                         .accessDeniedHandler((request, response, accessDeniedException) -> {
                             response.setStatus(ErrorCode.FORBIDDEN.getHttpStatus().value());
                             response.setCharacterEncoding(StandardCharsets.UTF_8.name());
                             response.setContentType(MediaType.APPLICATION_JSON_VALUE);
-                            objectMapper.writeValue(response.getWriter(), Result.fail(ErrorCode.FORBIDDEN));
+                            objectMapper.writeValue(response.getWriter(), ErrorResult.of(
+                                    ErrorCode.FORBIDDEN, ErrorCode.FORBIDDEN.getMessage()));
                         })
                 )
                 .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);

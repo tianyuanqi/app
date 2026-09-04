@@ -1,0 +1,2 @@
+package com.yuanqi.app.interaction.entity;import com.baomidou.mybatisplus.annotation.IdType;import com.baomidou.mybatisplus.annotation.TableId;import com.baomidou.mybatisplus.annotation.TableName;import lombok.Data;import java.time.LocalDateTime;
+@Data @TableName("comment_moderation_event") public class CommentModerationEvent{@TableId(type=IdType.AUTO)private Long id;private String eventId;private String commentId;private Long actorAccountId;private String reason;private LocalDateTime occurredAt;}

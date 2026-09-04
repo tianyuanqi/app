@@ -17,8 +17,12 @@ public class PhotoCategory {
     @TableId(type = IdType.AUTO)
     private Long id;
 
+    private String publicId;
     private String name;
+    private String normalizedName;
+    private Boolean active;
+    private Integer sortOrder;
+    private String source;
 
-    /** 排序权重，列名 sortorder */
-    private int sortorder;
+    @Deprecated public int getSortorder() { return sortOrder == null ? 0 : sortOrder; }
 }

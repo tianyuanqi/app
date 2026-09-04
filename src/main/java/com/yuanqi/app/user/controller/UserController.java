@@ -1,69 +1,69 @@
 package com.yuanqi.app.user.controller;
 
-import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.yuanqi.app.common.api.Result;
 import com.yuanqi.app.common.context.UserContext;
-import com.yuanqi.app.photo.vo.PhotoCardVO;
-import com.yuanqi.app.user.dto.UserRequests;
-import com.yuanqi.app.user.service.UserService;
-import com.yuanqi.app.user.vo.UserProfileVO;
-import com.yuanqi.app.user.vo.UserVO;
+import com.yuanqi.app.user.dto.ProfileRequests;
+import com.yuanqi.app.user.service.ProfileService;
+import com.yuanqi.app.user.vo.ProfileViews;
+import com.yuanqi.app.photo.service.PublicPhotoService;
+import com.yuanqi.app.photo.vo.PublicPhotoViews;
+import com.yuanqi.app.common.api.PageResult;
 import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
-/**
- * 用户资料与公开主页接口。
- */
-@Tag(name = "2. 用户资料", description = "当前用户与公开主页资料")
+@Tag(name = "用户资料")
 @RestController
 @RequestMapping("/api/v1/users")
 public class UserController {
+    private final ProfileService profileService;
+    private final PublicPhotoService publicPhotoService;
+    private final com.yuanqi.app.user.service.AvatarService avatarService;
+    private final com.yuanqi.app.common.idempotency.IdempotencyService idempotency;
 
-    private final UserService userService;
-
-    public UserController(UserService userService) {
-        this.userService = userService;
+    public UserController(ProfileService profileService, PublicPhotoService publicPhotoService,com.yuanqi.app.user.service.AvatarService avatarService,com.yuanqi.app.common.idempotency.IdempotencyService idempotency) {
+        this.profileService = profileService;
+        this.publicPhotoService=publicPhotoService;
+        this.avatarService=avatarService;
+        this.idempotency=idempotency;
     }
 
-    @Operation(summary = "获取当前用户资料")
+    @Operation(summary = "获取当前用户私有资料", security = @SecurityRequirement(name = "Authorization"))
     @GetMapping("/me")
-    public Result<UserVO> profile() {
-        return Result.success(userService.getProfile(UserContext.getUserId()));
+    public ResponseEntity<Result<ProfileViews.PrivateProfile>> me() {
+        ProfileViews.PrivateProfile view = profileService.privateProfile(UserContext.getUserId());
+        return ResponseEntity.ok().header(HttpHeaders.ETAG, view.versionTag()).body(Result.success(view));
     }
 
-    @Operation(summary = "修改当前用户资料", description = "支持邮箱、生日、性别、简介、头像")
+    @Operation(summary = "修改当前用户资料", security = @SecurityRequirement(name = "Authorization"))
     @PutMapping("/me")
-    public Result<UserVO> updateProfile(@Valid @RequestBody UserRequests.UpdateProfile request) {
-        return Result.success(userService.updateProfile(UserContext.getUserId(), request));
+    public ResponseEntity<Result<ProfileViews.PrivateProfile>> update(
+            @RequestHeader(value = HttpHeaders.IF_MATCH, required = false) String ifMatch,
+            @Valid @RequestBody ProfileRequests.Update request) {
+        ProfileViews.PrivateProfile view = profileService.update(UserContext.getUserId(), ifMatch, request);
+        return ResponseEntity.ok().header(HttpHeaders.ETAG, view.versionTag()).body(Result.success(view));
     }
 
-    @Operation(summary = "修改当前用户密码")
-    @PutMapping("/me/password")
-    public Result<Void> changePassword(@Valid @RequestBody UserRequests.ChangePassword request) {
-        userService.changePassword(UserContext.getUserId(), request);
-        return Result.success(null);
-    }
-
-    @Operation(summary = "获取用户公开主页资料")
+    @Operation(summary = "获取公开用户主页")
     @GetMapping("/{uid}")
-    public Result<UserProfileVO> publicProfile(@PathVariable String uid) {
-        return Result.success(userService.getPublicProfile(uid));
+    public Result<ProfileViews.PublicProfile> publicProfile(@PathVariable String uid) {
+        return Result.success(profileService.publicProfile(uid));
     }
 
-    @Operation(summary = "获取用户已发布作品墙")
-    @GetMapping("/{uid}/photos")
-    public Result<IPage<PhotoCardVO>> publicPhotos(
-            @PathVariable String uid,
-            @RequestParam(defaultValue = "1") Integer current,
-            @RequestParam(defaultValue = "10") Integer pageSize) {
-        return Result.success(userService.listPublicPhotos(uid, current, pageSize));
-    }
+    @Operation(summary="公开用户作品墙") @GetMapping("/{uid}/photos")
+    public Result<PageResult<PublicPhotoViews.Card>> publicPhotos(@PathVariable String uid,@org.springframework.web.bind.annotation.RequestParam(defaultValue="1")int page){profileService.publicProfile(uid);return Result.success(publicPhotoService.feed(UserContext.getUserId(),null,null,java.util.List.of(),page,uid));}
+
+    @Operation(summary="上传并生成 512x512 头像",security=@SecurityRequirement(name="Authorization")) @org.springframework.web.bind.annotation.PostMapping(value="/me/avatar",consumes=org.springframework.http.MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ResponseEntity<Result<com.yuanqi.app.user.service.AvatarService.Mutation>> avatar(@RequestHeader(value=HttpHeaders.IF_MATCH,required=false)String match,@RequestHeader(value="Idempotency-Key",required=false)String key,@org.springframework.web.bind.annotation.RequestPart("file")org.springframework.web.multipart.MultipartFile file)throws java.io.IOException{return idempotency.execute(UserContext.getUid(),"POST","/api/v1/users/me/avatar",key,java.util.Map.of("ifMatch",String.valueOf(match),"fileSha256",com.yuanqi.app.common.idempotency.IdempotencyService.sha256(file.getBytes()),"fileBytes",file.getSize()),com.yuanqi.app.user.service.AvatarService.Mutation.class,()->{var v=avatarService.upload(UserContext.getUserId(),match,file);return ResponseEntity.ok().header(HttpHeaders.ETAG,v.profileVersionTag()).body(Result.success(v));});}
+    @Operation(summary="删除当前头像",security=@SecurityRequirement(name="Authorization")) @org.springframework.web.bind.annotation.DeleteMapping("/me/avatar") public ResponseEntity<Result<com.yuanqi.app.user.service.AvatarService.Mutation>> deleteAvatar(@RequestHeader(value=HttpHeaders.IF_MATCH,required=false)String match){var v=avatarService.delete(UserContext.getUserId(),match);return ResponseEntity.ok().header(HttpHeaders.ETAG,v.profileVersionTag()).body(Result.success(v));}
 }

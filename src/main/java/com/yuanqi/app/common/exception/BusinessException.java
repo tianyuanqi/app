@@ -10,14 +10,21 @@ import lombok.Getter;
 public class BusinessException extends RuntimeException {
 
     private final ErrorCode errorCode;
+    private final boolean retryable;
+    private final Integer retryAfterSeconds;
 
     public BusinessException(ErrorCode errorCode) {
-        super(errorCode.getMessage());
-        this.errorCode = errorCode;
+        this(errorCode, errorCode.getMessage(), false, null);
     }
 
     public BusinessException(ErrorCode errorCode, String message) {
+        this(errorCode, message, false, null);
+    }
+
+    public BusinessException(ErrorCode errorCode, String message, boolean retryable, Integer retryAfterSeconds) {
         super(message);
         this.errorCode = errorCode;
+        this.retryable = retryable;
+        this.retryAfterSeconds = retryAfterSeconds;
     }
 }
